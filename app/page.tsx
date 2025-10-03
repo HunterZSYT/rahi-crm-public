@@ -1,103 +1,170 @@
+// app/page.tsx
+"use client";
+
+import * as React from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 import Image from "next/image";
+import { supabase } from "@/lib/supabase/client";
 
-export default function Home() {
+export default function LandingPage() {
+  const [authed, setAuthed] = React.useState(false);
+  const [ready, setReady] = React.useState(false);
+  const router = useRouter();
+
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
+      setAuthed(Boolean(data.session));
+      setReady(true);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const ctaHref = authed ? "/clients" : "/login";
+  const ctaLabel = authed ? "Go to Dashboard" : "View Dashboard";
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <main className="relative min-h-dvh overflow-hidden bg-neutral-950 text-white">
+      {/* animated blobs */}
+      <motion.div
+        className="pointer-events-none absolute -top-40 -left-40 h-[36rem] w-[36rem] rounded-full blur-3xl"
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 0.6, scale: [0.8, 1.1, 0.9, 1] }}
+        transition={{ duration: 10, repeat: Infinity, repeatType: "mirror" }}
+        style={{
+          background:
+            "radial-gradient( circle at 30% 30%, rgba(99,102,241,0.6), rgba(236,72,153,0.35) 40%, transparent 60% )",
+        }}
+      />
+      <motion.div
+        className="pointer-events-none absolute -bottom-40 -right-40 h-[36rem] w-[36rem] rounded-full blur-3xl"
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 0.55, scale: [1, 1.15, 0.95, 1.05] }}
+        transition={{ duration: 12, repeat: Infinity, repeatType: "mirror", delay: 0.2 }}
+        style={{
+          background:
+            "radial-gradient( circle at 70% 70%, rgba(34,197,94,0.55), rgba(14,165,233,0.35) 40%, transparent 60% )",
+        }}
+      />
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+      {/* top nav */}
+      <div className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
+        <div className="flex items-center gap-3">
+          <div className="h-13 w-40 overflow-hidden rounded-xl ring-1 ring-white/10">
+            <Image src="/logo.jpg" alt="Logo" width={200} height={100} className="h-full w-full object-cover" />
+          </div>
+          <div className="text-sm text-white/70">Tahsin Hosen Rahi</div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+
+        {ready && (
+          <Link
+            href={ctaHref}
+            className="rounded-xl bg-white/10 px-3 py-1.5 text-sm font-medium text-white backdrop-blur hover:bg-white/20"
+          >
+            {authed ? "Open Clients" : "Sign in"}
+          </Link>
+        )}
+      </div>
+
+      {/* hero */}
+      <section className="relative z-10 mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-10 px-6 pt-12 pb-20 md:grid-cols-[1.1fr,0.9fr] md:pt-20">
+        <div>
+          <motion.h1
+            className="text-4xl font-semibold leading-tight md:text-6xl"
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.6 }}
+          >
+            Voice Over Artist &<br /> Brand Promoter
+          </motion.h1>
+
+          <motion.p
+            className="mt-4 max-w-xl text-base text-white/70 md:text-lg"
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+          >
+            Manage clients, work, payments, and invoices in one tidy dashboard built for{" "}
+            <span className="text-white">Tahsin Hosen Rahi</span>.
+          </motion.p>
+
+          <motion.div
+            className="mt-8 flex flex-wrap items-center gap-3"
+            initial={{ y: 16, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+          >
+            <Link
+              href={ctaHref}
+              className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-neutral-900 shadow hover:bg-white/90"
+            >
+              {ctaLabel}
+            </Link>
+            <span className="text-xs text-white/60">No signup. Just you.</span>
+          </motion.div>
+        </div>
+
+        <motion.div
+          className="relative h-[260px] w-full rounded-3xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.03] p-4 shadow-2xl md:h-[360px]"
+          initial={{ opacity: 0, scale: 0.98, y: 10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.15 }}
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+          {/* subtle animated “cards” preview */}
+          <div className="grid h-full grid-cols-2 gap-4">
+            <motion.div
+              className="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10"
+              animate={{ y: [0, -6, 0] }}
+              transition={{ duration: 3.8, repeat: Infinity }}
+            >
+              <div className="h-3 w-24 rounded bg-white/20" />
+              <div className="mt-3 space-y-2">
+                <div className="h-2 w-5/6 rounded bg-white/10" />
+                <div className="h-2 w-4/6 rounded bg-white/10" />
+                <div className="h-2 w-3/6 rounded bg-white/10" />
+              </div>
+            </motion.div>
+            <motion.div
+              className="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10"
+              animate={{ y: [0, 6, 0] }}
+              transition={{ duration: 3.6, repeat: Infinity }}
+            >
+              <div className="h-3 w-20 rounded bg-white/20" />
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="h-16 rounded-xl bg-white/10" />
+                <div className="h-16 rounded-xl bg-white/10" />
+                <div className="h-16 rounded-xl bg-white/10" />
+                <div className="h-16 rounded-xl bg-white/10" />
+              </div>
+            </motion.div>
+          </div>
+
+          {/* colored logo badge in corner */}
+          <div className="pointer-events-none absolute -bottom-4 -right-4 rounded-2xl bg-white text-neutral-900 shadow-xl">
+            <div className="flex items-center gap-2 rounded-2xl p-2 pl-2.5 pr-3">
+              <Image
+                src="/logo.jpg"
+                alt="Logo"
+                width={150}
+                height={150}
+                className="h-9 w-25 rounded-xl object-cover"
+              />
+              <span className="text-xs font-semibold">TR Dashboard</span>
+            </div>
+          </div>
+        </motion.div>
+      </section>
+
+      {/* footer */}
+      <div className="relative z-10 mx-auto max-w-6xl px-6 pb-8">
+        <p className="text-xs text-white/50">© {new Date().getFullYear()} Tahsin Hosen Rahi</p>
+      </div>
+    </main>
   );
 }
