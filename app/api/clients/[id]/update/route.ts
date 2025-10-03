@@ -1,13 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 type ChargedBy = "second" | "minute" | "hour" | "project";
 type Status = "active" | "closed" | "payment_expired";
 
 export async function POST(
-  req: Request,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }   // 👈 Next 15 expects Promise
 ) {
+  const { id } = await params;                       // 👈 await the params
   const body = await req.json();
   const supabase = await createClient();
 
@@ -16,15 +17,21 @@ export async function POST(
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
 
-  // optional/validated fields
+  // normalize/validate optional fields
+  const chargedByRaw = String(body.charged_by ?? "").toLowerCase();
   const charged_by: ChargedBy | undefined =
-    ["second", "minute", "hour", "project"].includes(body.charged_by)
-      ? (body.charged_by as ChargedBy)
+    (["second", "minute", "hour", "project"] as const).includes(
+      chargedByRaw as ChargedBy
+    )
+      ? (chargedByRaw as ChargedBy)
       : undefined;
 
+  const statusRaw = String(body.status ?? "").toLowerCase();
   const status: Status | undefined =
-    ["active", "closed", "payment_expired"].includes(body.status)
-      ? (body.status as Status)
+    (["active", "closed", "payment_expired"] as const).includes(
+      statusRaw as Status
+    )
+      ? (statusRaw as Status)
       : undefined;
 
   const rate =
@@ -42,18 +49,21 @@ export async function POST(
   };
 
   if (charged_by) patch.charged_by = charged_by;
-  if (status) patch.status = status; // ← NEW
+  if (status) patch.status = status;
   if (typeof rate === "number") patch.rate = rate;
 
-  // allow changing created_at from a date input (YYYY-MM-DD)
+  // allow changing created_at via YYYY-MM-DD
   if (body.created_at) {
-    // set to start of day in UTC
+    // store as start of day UTC
     const iso = new Date(`${body.created_at}T00:00:00.000Z`).toISOString();
     patch.created_at = iso;
   }
 
-  const { error } = await supabase.from("clients").update(patch).eq("id", params.id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const { error } = await supabase.from("clients").update(patch).eq("id", id);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   return NextResponse.json({ ok: true });
 }

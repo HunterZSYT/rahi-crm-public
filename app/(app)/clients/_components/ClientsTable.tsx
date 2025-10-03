@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 // header helpers (adjust paths if yours differ)
-import SortableHeader from "./SortableHeader.tsx";
+import SortableHeader from "./SortableHeader";
 import HeaderMultiSelect from "./HeaderMultiSelect";
 import DateHeaderRange from "./DateHeaderRange";
 
