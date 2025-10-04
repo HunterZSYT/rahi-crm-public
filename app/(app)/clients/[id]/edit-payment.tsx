@@ -1,3 +1,4 @@
+// app/(app)/clients/[id]/edit-payment.tsx
 "use client";
 
 import React, {
@@ -9,6 +10,7 @@ import React, {
 } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
 
 /* ---------------- Types ---------------- */
 
@@ -60,6 +62,9 @@ export default function EditPayment({ initial, trigger }: Props) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  const firstFieldRef = React.useRef<HTMLInputElement | null>(null);
+  const lastActiveEl = React.useRef<HTMLElement | null>(null);
+
   // hydrate on open
   useEffect(() => {
     if (!open) return;
@@ -73,6 +78,20 @@ export default function EditPayment({ initial, trigger }: Props) {
     setNote(initial.note ?? "");
     setErr(null);
   }, [open, initial]);
+
+  // body scroll lock + autofocus + focus restore
+  useEffect(() => {
+    if (open) {
+      lastActiveEl.current = document.activeElement as HTMLElement | null;
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      setTimeout(() => firstFieldRef.current?.focus(), 0);
+      return () => {
+        document.body.style.overflow = prev;
+        lastActiveEl.current?.focus?.();
+      };
+    }
+  }, [open]);
 
   const wrappedTrigger = useMemo(() => {
     if (!trigger || !isValidElement<TriggerElProps>(trigger)) return trigger;
@@ -129,6 +148,21 @@ export default function EditPayment({ initial, trigger }: Props) {
     }
   }
 
+  function onBackdropClick(e: React.MouseEvent) {
+    if (saving) return;
+    if (e.target === e.currentTarget) setOpen(false);
+  }
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Escape" && !saving) setOpen(false);
+  }
+
+  const input =
+    "w-full rounded-xl border border-neutral-300 bg-white p-2 text-sm outline-none placeholder-neutral-400 focus:ring-2 focus:ring-indigo-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:placeholder-neutral-500 dark:focus:ring-indigo-400";
+  const select =
+    "w-full rounded-xl border border-neutral-300 bg-white p-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:focus:ring-indigo-400";
+  const btn =
+    "rounded-xl border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800";
+
   return (
     <>
       {wrappedTrigger ?? (
@@ -137,104 +171,126 @@ export default function EditPayment({ initial, trigger }: Props) {
         </button>
       )}
 
-      {open && (
-        <Portal>
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-            <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium">Edit payment</h3>
-                <button
-                  onClick={() => setOpen(false)}
-                  className="rounded-xl border px-3 py-1 text-sm"
-                >
-                  Close
-                </button>
-              </div>
-
-              <form onSubmit={onSubmit} className="mt-4 space-y-4">
-                <div>
-                  <label className="mb-1 block text-sm">Date</label>
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    required
-                    className="w-full rounded-xl border p-2 outline-none focus:ring"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm">Amount</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={amount}
-                    onChange={(e) =>
-                      setAmount(e.target.value === "" ? "" : Number(e.target.value))
-                    }
-                    required
-                    className="w-full rounded-xl border p-2 outline-none focus:ring"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm">Medium</label>
-                  <select
-                    value={medium}
-                    onChange={(e) => setMedium(e.target.value)}
-                    className="w-full rounded-xl border p-2 outline-none focus:ring"
-                  >
-                    <option value="bkash">Bkash</option>
-                    <option value="bank">Bank</option>
-                    <option value="cash">Cash</option>
-                    <option value="nagad">Nagad</option>
-                    <option value="rocket">Rocket</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm">Note (optional)</label>
-                  <textarea
-                    rows={3}
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    className="w-full resize-none rounded-xl border p-2 outline-none focus:ring"
-                  />
-                </div>
-
-                {err && <p className="text-sm text-red-600">{err}</p>}
-
-                <div className="flex items-center justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={onDelete}
-                    disabled={saving}
-                    className="rounded-xl border px-4 py-2 text-red-600 disabled:opacity-50"
-                  >
-                    Delete
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setOpen(false)}
-                    disabled={saving}
-                    className="rounded-xl border px-4 py-2 disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="rounded-xl bg-black px-4 py-2 text-white disabled:opacity-50"
-                  >
-                    {saving ? "Saving..." : "Save changes"}
+      <AnimatePresence>
+        {open && (
+          <Portal>
+            <motion.div
+              key="edit-payment"
+              className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-sm"
+              onClick={onBackdropClick}
+              onKeyDown={onKeyDown}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Edit payment"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, transition: { duration: 0.15 } }}
+            >
+              <motion.div
+                initial={{ y: 14, opacity: 0.98, scale: 0.98 }}
+                animate={{
+                  y: 0,
+                  opacity: 1,
+                  scale: 1,
+                  transition: { type: "spring", stiffness: 360, damping: 28 },
+                }}
+                exit={{ y: 10, opacity: 0, scale: 0.98, transition: { duration: 0.18 } }}
+                className="w-full max-w-xl overflow-hidden rounded-2xl border border-neutral-200 bg-white text-neutral-900 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3 dark:border-neutral-800">
+                  <h3 className="text-base font-semibold">Edit payment</h3>
+                  <button onClick={() => setOpen(false)} className={btn} disabled={saving}>
+                    Close
                   </button>
                 </div>
-              </form>
-            </div>
-          </div>
-        </Portal>
-      )}
+
+                {/* Body */}
+                <form onSubmit={onSubmit} className="space-y-4 px-5 py-4">
+                  <div>
+                    <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">Date</label>
+                    <input
+                      ref={firstFieldRef}
+                      type="date"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                      required
+                      className={input}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">Amount</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={amount}
+                      onChange={(e) =>
+                        setAmount(e.target.value === "" ? "" : Number(e.target.value))
+                      }
+                      required
+                      className={input}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">Medium</label>
+                    <select
+                      value={medium}
+                      onChange={(e) => setMedium(e.target.value)}
+                      className={select}
+                    >
+                      <option value="bkash">Bkash</option>
+                      <option value="bank">Bank</option>
+                      <option value="cash">Cash</option>
+                      <option value="nagad">Nagad</option>
+                      <option value="rocket">Rocket</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">
+                      Note (optional)
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      className={input + " resize-none"}
+                    />
+                  </div>
+
+                  {err && <p className="text-sm text-rose-600 dark:text-rose-400">{err}</p>}
+
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={onDelete}
+                      disabled={saving}
+                      className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50 dark:border-rose-700/60 dark:text-rose-300 dark:hover:bg-rose-900/30"
+                    >
+                      Delete
+                    </button>
+                    <button type="button" onClick={() => setOpen(false)} disabled={saving} className={btn}>
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+                    >
+                      {saving ? "Saving..." : "Save changes"}
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            </motion.div>
+          </Portal>
+        )}
+      </AnimatePresence>
     </>
   );
 }

@@ -38,21 +38,32 @@ export default function WorkTableClient({
     return rows.filter((r) => (r.variant_label ?? "").trim() === active);
   }, [rows, active]);
 
+  const chipBase =
+    "rounded-full border px-3 py-1 text-xs sm:text-sm transition-colors";
+  const chipInactive =
+    "bg-white text-neutral-800 hover:bg-neutral-50 border-neutral-200 " +
+    "dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800 dark:border-neutral-700";
+  const chipActive =
+    "bg-black text-white border-transparent " +
+    "dark:bg-white dark:text-black";
+
   return (
     <>
+      {/* Toolbar */}
       <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="inline-flex w-fit items-center gap-2 rounded-xl border bg-white/70 px-3 py-2 text-sm text-neutral-700">
-          <span>{filtered.length} total</span>
+        <div className="inline-flex w-fit items-center gap-2 rounded-xl border bg-white/70 px-3 py-2 text-sm text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-200">
+          <span>
+            {filtered.length} total
+          </span>
         </div>
         {right ? <div className="flex items-center gap-2">{right}</div> : null}
       </div>
+
+      {/* Variant filter chips */}
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <button
           onClick={() => setActive("__all")}
-          className={[
-            "rounded-full border px-3 py-1 text-sm",
-            active === "__all" ? "bg-black text-white" : "bg-white",
-          ].join(" ")}
+          className={[chipBase, active === "__all" ? chipActive : chipInactive].join(" ")}
         >
           All
         </button>
@@ -60,10 +71,7 @@ export default function WorkTableClient({
           <button
             key={v}
             onClick={() => setActive(v)}
-            className={[
-              "rounded-full border px-3 py-1 text-sm",
-              active === v ? "bg-black text-white" : "bg-white",
-            ].join(" ")}
+            className={[chipBase, active === v ? chipActive : chipInactive].join(" ")}
             title={v}
           >
             {v}
@@ -84,7 +92,7 @@ export default function WorkTableClient({
             <col />
           </colgroup>
 
-          <thead className="sticky top-0 z-10 bg-neutral-50 text-neutral-800">
+          <thead className="sticky top-0 z-10 bg-neutral-50 text-neutral-800 dark:bg-neutral-900/60 dark:text-neutral-200 border-b border-neutral-200 dark:border-neutral-800">
             <tr className="text-left">
               <th className="px-4 py-2">Date</th>
               <th className="px-4 py-2">Project</th>
@@ -97,7 +105,7 @@ export default function WorkTableClient({
             </tr>
           </thead>
 
-          <tbody className="text-neutral-900">
+          <tbody className="text-neutral-900 dark:text-neutral-100">
             {filtered.map((r) => (
               <WorkRow
                 key={r.id}
@@ -114,7 +122,7 @@ export default function WorkTableClient({
               <tr>
                 <td
                   colSpan={hasVariants ? 8 : 7}
-                  className="px-4 py-6 text-center text-neutral-500"
+                  className="px-4 py-6 text-center text-neutral-500 dark:text-neutral-400"
                 >
                   No entries in this tab.
                 </td>

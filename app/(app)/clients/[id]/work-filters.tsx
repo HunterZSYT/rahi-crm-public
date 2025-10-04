@@ -32,10 +32,10 @@ export default function WorkFilters({ current }: { current: WorkFiltersState }) 
     options: { value: string; label: string }[];
     onChange: (v: string) => void;
   }) => (
-    <label className="flex items-center gap-2 text-sm">
-      <span className="text-neutral-600">{label}</span>
+    <label className="flex items-center gap-2 text-[13px]">
+      <span className="text-neutral-600 dark:text-neutral-300">{label}</span>
       <select
-        className="rounded-xl border px-2 py-1"
+        className="h-[34px] rounded-xl border border-neutral-200 bg-white px-2 py-1 text-neutral-900 outline-none transition-shadow focus-visible:ring dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >

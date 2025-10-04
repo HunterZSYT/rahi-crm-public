@@ -1,43 +1,68 @@
-// app/(whatever)/loading.tsx
+// components/Spinner.tsx
 "use client";
 
+import React from "react";
 import { motion, useReducedMotion } from "framer-motion";
 
-export default function Loading() {
+type Shape = "circle" | "triangle" | "square";
+
+type Props = {
+  /** Fullscreen overlay (fixed) vs inline block */
+  fullscreen?: boolean;
+  /** Show the frosted aurora background */
+  glass?: boolean;
+  /** Text label under the loader */
+  label?: string;
+  /** Pixel size of each shape (default 48) */
+  size?: number;
+};
+
+export default function Spinner({
+  fullscreen = true,
+  glass = true,
+  label = "Loading",
+  size = 48,
+}: Props) {
   const reduce = useReducedMotion();
 
   return (
     <div
-      className="fixed inset-0 z-[60] grid place-items-center overflow-hidden"
+      className={
+        fullscreen
+          ? "fixed inset-0 z-[60] grid place-items-center overflow-hidden"
+          : "relative grid place-items-center overflow-hidden"
+      }
       aria-busy="true"
       aria-live="polite"
     >
       {/* aurora glass */}
-      <div className="pointer-events-none absolute inset-0 -z-10">
-        <motion.div
-          className="absolute -top-40 -left-20 h-[60vh] w-[60vw] rounded-full bg-gradient-to-tr from-fuchsia-400 via-purple-400 to-rose-300 opacity-40 blur-3xl mix-blend-multiply dark:opacity-30"
-          animate={reduce ? {} : { x: [0, 40, -20, 0], y: [0, 20, -10, 0] }}
-          transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
-        />
-        <motion.div
-          className="absolute -bottom-40 -right-24 h-[55vh] w-[55vw] rounded-full bg-gradient-to-br from-sky-300 via-indigo-400 to-pink-300 opacity-40 blur-3xl mix-blend-multiply dark:opacity-30"
-          animate={reduce ? {} : { x: [0, -30, 20, 0], y: [0, -20, 10, 0] }}
-          transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
-        />
-        <div className="absolute inset-0 bg-white/70 backdrop-blur-sm dark:bg-neutral-950/60" />
-      </div>
+      {glass && (
+        <div className="pointer-events-none absolute inset-0 -z-10">
+          <motion.div
+            className="absolute -top-40 -left-20 h-[60vh] w-[60vw] rounded-full bg-gradient-to-tr from-fuchsia-400 via-purple-400 to-rose-300 opacity-40 blur-3xl mix-blend-multiply dark:opacity-30"
+            animate={reduce ? {} : { x: [0, 40, -20, 0], y: [0, 20, -10, 0] }}
+            transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+          />
+          <motion.div
+            className="absolute -bottom-40 -right-24 h-[55vh] w-[55vw] rounded-full bg-gradient-to-br from-sky-300 via-indigo-400 to-pink-300 opacity-40 blur-3xl mix-blend-multiply dark:opacity-30"
+            animate={reduce ? {} : { x: [0, -30, 20, 0], y: [0, -20, 10, 0] }}
+            transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+          />
+          <div className="absolute inset-0 bg-white/70 backdrop-blur-sm dark:bg-neutral-950/60" />
+        </div>
+      )}
 
       {/* trio loader */}
       <div className="flex flex-col items-center gap-6">
         <div className="flex items-center gap-6">
-          <ShapeLoader variant="circle" reduce={reduce} />
-          <ShapeLoader variant="triangle" reduce={reduce} />
-          <ShapeLoader variant="square" reduce={reduce} />
+          <ShapeLoader variant="circle" reduce={reduce} size={size} />
+          <ShapeLoader variant="triangle" reduce={reduce} size={size} />
+          <ShapeLoader variant="square" reduce={reduce} size={size} />
         </div>
 
         {/* label with animated dots */}
         <div className="text-sm text-neutral-700 dark:text-neutral-300">
-          Loading
+          {label}
           {!reduce && (
             <span className="inline-flex w-8 overflow-hidden align-bottom">
               <motion.span
@@ -74,9 +99,11 @@ export default function Loading() {
 function ShapeLoader({
   variant,
   reduce,
+  size = 48,
 }: {
-  variant: "circle" | "triangle" | "square";
+  variant: Shape;
   reduce: boolean | null;
+  size?: number;
 }) {
   const duration = 3;
 
@@ -91,7 +118,7 @@ function ShapeLoader({
   };
 
   return (
-    <div className="relative h-12 w-12">
+    <div className="relative" style={{ width: size, height: size }}>
       {/* moving dot */}
       <motion.div
         className="absolute left-1/2 top-1/2 h-[6px] w-[6px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-neutral-900 dark:bg-white"
@@ -137,22 +164,20 @@ function ShapeLoader({
       </motion.div>
 
       {/* shape path */}
-      <svg viewBox={variant === "triangle" ? "0 0 86 80" : "0 0 80 80"} className="h-full w-full">
+      <svg
+        viewBox={variant === "triangle" ? "0 0 86 80" : "0 0 80 80"}
+        className="h-full w-full"
+      >
         {variant === "circle" && (
           <motion.circle
             {...commonStroke}
             cx="40"
             cy="40"
             r="32"
-            // 200 ≈ circumference; pattern 3/4 + 1/4, offset anim like the CSS
-            strokeDasharray={`${(200 / 4) * 3} ${200 / 4} ${(200 / 4) * 3} ${200 / 4}`}
+            strokeDasharray={`${(200 / 4) * 3} ${200 / 4} ${(200 / 4) * 3} ${200 / 4}`} // 150 50 150 50
             initial={{ strokeDashoffset: 75 }}
             animate={reduce ? {} : { strokeDashoffset: [75, 125, 175, 225, 275] }}
-            transition={{
-              duration,
-              repeat: Infinity,
-              ease: [0.785, 0.135, 0.15, 0.86],
-            }}
+            transition={{ duration, repeat: Infinity, ease: [0.785, 0.135, 0.15, 0.86] }}
           />
         )}
 
@@ -163,13 +188,9 @@ function ShapeLoader({
             y="8"
             width="64"
             height="64"
-            strokeDasharray={`${(256 / 4) * 3} ${256 / 4} ${(256 / 4) * 3} ${256 / 4}`}
+            strokeDasharray={`${(256 / 4) * 3} ${256 / 4} ${(256 / 4) * 3} ${256 / 4}`} // 192 64 192 64
             animate={reduce ? {} : { strokeDashoffset: [0, 64, 128, 192, 256] }}
-            transition={{
-              duration,
-              repeat: Infinity,
-              ease: [0.785, 0.135, 0.15, 0.86],
-            }}
+            transition={{ duration, repeat: Infinity, ease: [0.785, 0.135, 0.15, 0.86] }}
           />
         )}
 
@@ -177,13 +198,9 @@ function ShapeLoader({
           <motion.polygon
             {...commonStroke}
             points="43 8 79 72 7 72"
-            strokeDasharray={`145 ${221 - 145} 145 ${221 - 145}`}
+            strokeDasharray={`145 ${221 - 145} 145 ${221 - 145}`} // 145 76 145 76
             animate={reduce ? {} : { strokeDashoffset: [0, 74, 147, 221] }}
-            transition={{
-              duration,
-              repeat: Infinity,
-              ease: [0.785, 0.135, 0.15, 0.86],
-            }}
+            transition={{ duration, repeat: Infinity, ease: [0.785, 0.135, 0.15, 0.86] }}
           />
         )}
       </svg>

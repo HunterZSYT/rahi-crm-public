@@ -1,30 +1,41 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUpDown, ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronUp, ChevronDown, ArrowUpDown } from "lucide-react";
 
-export default function SortableHeader({
-  label,
-  active,
-  dir,
-  onToggle,
-}: {
+type Props = {
   label: string;
   active?: boolean;
   dir?: "asc" | "desc";
-  onToggle: () => void;
-}) {
+  onToggle?: () => void;
+  className?: string;
+};
+
+export default function SortableHeader({
+  label,
+  active = false,
+  dir = "asc",
+  onToggle,
+  className = "",
+}: Props) {
   const Icon = !active ? ArrowUpDown : dir === "asc" ? ChevronUp : ChevronDown;
 
   return (
     <button
       type="button"
       onClick={onToggle}
-      className="inline-flex select-none items-center gap-1 rounded px-1 py-0.5 text-left text-sm hover:bg-neutral-100"
-      title={active ? `Sorted ${dir}` : "Click to sort"}
+      className={[
+        "inline-flex items-center gap-1 rounded-lg px-2 py-1",
+        "text-[12.5px] font-medium",
+        "text-neutral-700 hover:bg-neutral-100 focus:outline-none focus:ring",
+        "dark:text-neutral-200 dark:hover:bg-neutral-800 dark:focus:ring-neutral-700",
+        "transition-[background-color,box-shadow]",
+        className,
+      ].join(" ")}
+      aria-pressed={active}
     >
-      <span>{label}</span>
-      <Icon className="h-4 w-4 opacity-70" />
+      {label && <span>{label}</span>}
+      <Icon className="h-3.5 w-3.5 opacity-80" />
     </button>
   );
 }

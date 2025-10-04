@@ -26,9 +26,8 @@ export default function HeaderMultiSelect({
 
   React.useEffect(() => setLocal(selected ?? []), [selected]);
 
-  const toggle = (val: string) => {
+  const toggle = (val: string) =>
     setLocal((cur) => (cur.includes(val) ? cur.filter((v) => v !== val) : [...cur, val]));
-  };
 
   const apply = () => {
     const p = new URLSearchParams(searchParams.toString());
@@ -48,7 +47,6 @@ export default function HeaderMultiSelect({
     setOpen(false);
   };
 
-  // close when clicking outside
   const wrapperRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -62,14 +60,27 @@ export default function HeaderMultiSelect({
   return (
     <div className="relative" ref={wrapperRef}>
       <div className="inline-flex items-center gap-2">
-        <span className="text-sm">{label}</span>
-        <Button type="button" variant="outline" size="sm" onClick={() => setOpen((v) => !v)}>
+        <span className="text-[12.5px] text-neutral-700 dark:text-neutral-300">{label}</span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setOpen((v) => !v)}
+          className="h-7 px-2 text-[12.5px]"
+        >
           Filter
         </Button>
       </div>
 
       {open && (
-        <div className="absolute top-9 left-0 z-50 w-56 rounded-xl border bg-white p-3 shadow-md">
+        <div
+          className={[
+            "absolute left-0 top-8 z-50 w-56 rounded-xl border p-3 shadow-md",
+            "bg-white/95 border-neutral-200",
+            "dark:bg-neutral-900/95 dark:border-neutral-800",
+            "backdrop-blur supports-[backdrop-filter]:bg-white/85 dark:supports-[backdrop-filter]:bg-neutral-900/85",
+          ].join(" ")}
+        >
           <ul className="space-y-2">
             {options.map((opt) => (
               <li key={opt.value} className="flex items-center gap-2">
@@ -78,9 +89,15 @@ export default function HeaderMultiSelect({
                   type="checkbox"
                   checked={local.includes(opt.value)}
                   onChange={() => toggle(opt.value)}
-                  className="h-4 w-4 rounded border-neutral-300"
+                  className={[
+                    "h-4 w-4 rounded border-neutral-300 text-indigo-600",
+                    "dark:border-neutral-700 dark:bg-neutral-800",
+                  ].join(" ")}
                 />
-                <label htmlFor={`${param}-${opt.value}`} className="select-none text-sm">
+                <label
+                  htmlFor={`${param}-${opt.value}`}
+                  className="select-none text-[12.5px] text-neutral-800 dark:text-neutral-200"
+                >
                   {opt.label}
                 </label>
               </li>
@@ -88,10 +105,10 @@ export default function HeaderMultiSelect({
           </ul>
 
           <div className="mt-3 flex items-center justify-between">
-            <Button variant="ghost" size="sm" onClick={clear}>
+            <Button variant="ghost" size="sm" onClick={clear} className="h-7 px-2 text-[12.5px]">
               Clear
             </Button>
-            <Button size="sm" onClick={apply}>
+            <Button size="sm" onClick={apply} className="h-7 px-3 text-[12.5px]">
               Apply
             </Button>
           </div>

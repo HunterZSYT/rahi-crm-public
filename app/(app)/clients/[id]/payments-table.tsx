@@ -1,7 +1,7 @@
 // app/(app)/clients/[id]/payments-table.tsx
 import { createClient } from "@/lib/supabase/server";
 import { formatDateLong, formatMoney } from "@/lib/format";
-import EditPayment from "./edit-payment"; // your existing inline editor
+import EditPayment from "./edit-payment";
 
 type PaymentRow = {
   id: string;
@@ -15,7 +15,7 @@ const COLUMNS = "id,date,amount,medium,note" as const;
 
 export default async function PaymentsTable({
   clientId,
-  right, // optional toolbar slot (e.g., Add payment button)
+  right,
 }: {
   clientId: string;
   right?: React.ReactNode;
@@ -29,7 +29,11 @@ export default async function PaymentsTable({
     .order("date", { ascending: false });
 
   if (error) {
-    return <div className="text-red-700">{error.message}</div>;
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-900/20 dark:text-red-300">
+        {error.message}
+      </div>
+    );
   }
 
   const rows = (data ?? []) as PaymentRow[];
@@ -37,37 +41,36 @@ export default async function PaymentsTable({
 
   return (
     <>
-      {/* Toolbar: summary on the left, your controls on the right */}
+      {/* Toolbar */}
       <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="inline-flex w-fit items-center gap-3 rounded-xl border bg-white/70 px-3 py-2 text-sm text-neutral-700">
+        <div className="inline-flex items-center gap-3 rounded-xl border border-neutral-200 bg-white/70 px-3 py-2 text-[13px] text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-neutral-200">
           <span>
             {rows.length} payment{rows.length === 1 ? "" : "s"}
           </span>
           <span className="font-medium tabular-nums">{formatMoney(totalPaid)}</span>
         </div>
-
         {right ? <div className="flex items-center gap-2">{right}</div> : null}
       </div>
 
       <div className="overflow-x-auto">
-        <table className="min-w-[560px] w-full table-auto text-sm">
+        <table className="w-full table-auto text-[13px]">
+          <caption className="sr-only">Payment entries</caption>
           <colgroup>
-            <col className="w-[160px]" />
-            <col className="w-[120px]" />
-            <col className="w-[160px]" />
+            <col className="w-[1%]" />
+            <col className="w-[1%]" />
+            <col className="w-[1%]" />
             <col />
           </colgroup>
-
-          <thead className="sticky top-0 z-10 bg-neutral-50 text-neutral-800">
+          <thead className="sticky top-0 z-10 bg-neutral-50/95 text-neutral-800 backdrop-blur supports-[backdrop-filter]:bg-neutral-50/80 dark:bg-neutral-900/80 dark:text-neutral-200">
             <tr className="text-left">
-              <th className="px-4 py-2">Date</th>
-              <th className="px-4 py-2 text-right">Amount</th>
-              <th className="px-4 py-2">Medium</th>
-              <th className="px-4 py-2">Note</th>
+              <th className="px-4 py-2 font-medium">Date</th>
+              <th className="px-4 py-2 text-right font-medium">Amount</th>
+              <th className="px-4 py-2 font-medium">Medium</th>
+              <th className="px-4 py-2 font-medium">Note</th>
             </tr>
           </thead>
 
-          <tbody className="text-neutral-900">
+          <tbody className="text-neutral-900 dark:text-neutral-100">
             {rows.map((r) => (
               <EditPayment
                 key={r.id}
@@ -79,16 +82,20 @@ export default async function PaymentsTable({
                   note: r.note ?? "",
                 }}
                 trigger={
-                  <tr className="border-t cursor-pointer hover:bg-neutral-50">
-                    <td className="px-4 py-2 whitespace-nowrap">{formatDateLong(r.date)}</td>
-                    <td className="px-4 py-2 text-right whitespace-nowrap tabular-nums">
+                  <tr className="cursor-pointer border-t border-neutral-200 transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-800/60">
+                    <td className="whitespace-nowrap px-4 py-2">{formatDateLong(r.date)}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums">
                       {formatMoney(r.amount)}
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap capitalize">
+                    <td className="whitespace-nowrap px-4 py-2 capitalize">
                       {r.medium.replace("_", " ")}
                     </td>
-                    <td className="px-4 py-2">
-                      <span className="block truncate" title={r.note ?? ""}>
+                    {/* Note: max-w-0 on the cell + truncate on inner span keeps table width tidy */}
+                    <td className="max-w-0 px-4 py-2">
+                      <span
+                        className="block truncate text-neutral-700 dark:text-neutral-300"
+                        title={r.note ?? ""}
+                      >
                         {r.note ?? "—"}
                       </span>
                     </td>
@@ -99,7 +106,10 @@ export default async function PaymentsTable({
 
             {rows.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-neutral-500">
+                <td
+                  colSpan={4}
+                  className="px-4 py-6 text-center text-neutral-500 dark:text-neutral-400"
+                >
                   No payments yet.
                 </td>
               </tr>

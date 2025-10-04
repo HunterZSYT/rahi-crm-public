@@ -28,7 +28,7 @@ export type WorkInitial = {
   override_reason?: string | null;
   delivered_at?: string | null;
   note?: string | null;
-  /** NEW: optional variant label saved on the row */
+  /** optional saved label */
   variant_label?: string | null;
 };
 
@@ -47,7 +47,6 @@ function clampSeconds(v: number) {
   if (!Number.isFinite(v)) return 0;
   return Math.max(0, Math.min(59, v));
 }
-
 function calcUnitsFromDuration(basis: Basis, minutes: number, seconds: number) {
   const s = minutes * 60 + clampSeconds(seconds);
   switch (basis) {
@@ -61,7 +60,6 @@ function calcUnitsFromDuration(basis: Basis, minutes: number, seconds: number) {
       return 0;
   }
 }
-
 function toBDT(n: number) {
   return n.toLocaleString("en-BD", { maximumFractionDigits: 2 });
 }
@@ -93,14 +91,9 @@ function makeVariant(idx: number, basis: Basis): Variant {
     overrideReason: "",
   };
 }
-
 function variantFinalTotal(v: Variant, clientRate: number) {
-  if (v.pricingMode === "manual_total") {
-    return Number(v.manualTotal || 0);
-  }
-  const rate =
-    v.pricingMode === "auto" ? Number(clientRate || 0) : Number(v.customRate || 0);
-
+  if (v.pricingMode === "manual_total") return Number(v.manualTotal || 0);
+  const rate = v.pricingMode === "auto" ? Number(clientRate || 0) : Number(v.customRate || 0);
   if (v.basis === "project") {
     const u = Math.max(1, Number(v.projectUnits || 1));
     return u * rate;
@@ -144,12 +137,16 @@ export default function AddWork({
   const [singleRate, setSingleRate] = useState<number | "">("");
   const [singleTotal, setSingleTotal] = useState<number | "">("");
   const [singleReason, setSingleReason] = useState<string>("");
-  /** NEW: editable label on edit */
   const [singleVariantLabel, setSingleVariantLabel] = useState<string>("");
 
   // variants (create)
   const [variantCount, setVariantCount] = useState<number>(1);
   const [variants, setVariants] = useState<Variant[]>([makeVariant(0, defaultBasis)]);
+
+  // NEW: existing labels for this client
+  const [existingLabels, setExistingLabels] = useState<string[] | null>(null);
+  const [useNewLabel, setUseNewLabel] = useState<boolean>(false);
+  const [chosenLabel, setChosenLabel] = useState<string>("");
 
   // error/saving
   const [saving, setSaving] = useState(false);
@@ -162,6 +159,9 @@ export default function AddWork({
     if (isEdit && initial) {
       setVariantCount(1);
       setVariants([makeVariant(0, defaultBasis)]);
+      setExistingLabels(null);
+      setUseNewLabel(false);
+      setChosenLabel("");
 
       setDate((initial.date ?? "").slice(0, 10) || todayISO());
       setProject(initial.project_name ?? "");
@@ -184,19 +184,18 @@ export default function AddWork({
           : ""
       );
       setSingleReason(initial.override_reason ?? "");
-      setSingleVariantLabel(initial.variant_label ?? ""); // NEW
+      setSingleVariantLabel(initial.variant_label ?? "");
       setNote(initial.note ?? "");
       setMarkDelivered(Boolean(initial.delivered_at));
       setErr(null);
       return;
     }
 
-    // new
+    // new create flow
     setDate(todayISO());
     setProject("");
     setNote("");
     setMarkDelivered(true);
-
     setSingleBasis(defaultBasis);
     setSinglePricing("auto");
     setSingleMin("");
@@ -205,11 +204,40 @@ export default function AddWork({
     setSingleRate("");
     setSingleTotal("");
     setSingleReason("");
-    setSingleVariantLabel(""); // NEW
+    setSingleVariantLabel("");
 
     setVariantCount(1);
     setVariants([makeVariant(0, defaultBasis)]);
     setErr(null);
+
+    // fetch distinct variant labels for this client (best-effort)
+    (async () => {
+      try {
+        const r = await fetch(`/api/clients/${clientId}/variant-labels`, { cache: "no-store" });
+        const j = await r.json();
+        const labels = (j?.labels ?? [])
+          .map((s: unknown) => (typeof s === "string" ? s.trim() : ""))
+          .filter(Boolean);
+        setExistingLabels(labels);
+
+        if (labels.length) {
+          // default to first label, single-variant UI
+          setUseNewLabel(false);
+          setChosenLabel(labels[0]);
+          setVariants([{ ...makeVariant(0, defaultBasis), label: labels[0] }]);
+          setVariantCount(1);
+        } else {
+          // no existing labels → allow multi-variant creator
+          setUseNewLabel(true);
+          setChosenLabel("");
+        }
+      } catch {
+        // route missing or failed → behave like "no variants"
+        setExistingLabels([]);
+        setUseNewLabel(true);
+        setChosenLabel("");
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modalOpen]);
 
@@ -217,7 +245,6 @@ export default function AddWork({
   const singlePreview = useMemo(() => {
     if (singlePricing === "manual_total") return Number(singleTotal || 0);
     const rate = singlePricing === "auto" ? Number(defaultRate || 0) : Number(singleRate || 0);
-
     if (singleBasis === "project") {
       return Math.max(0, Math.max(1, Number(singleUnits || 1)) * rate);
     }
@@ -287,7 +314,6 @@ export default function AddWork({
           override_reason: singlePricing === "auto" ? null : singleReason || null,
           note: note || null,
           delivered_at: markDelivered ? new Date().toISOString() : null,
-          /** NEW: send label on edit as well */
           variant_label: singleVariantLabel || null,
         };
 
@@ -299,8 +325,18 @@ export default function AddWork({
         const j = await res.json();
         if (!res.ok) throw new Error(j?.error || "Failed to save");
       } else {
-        // CREATE: 1..N rows
-        const toCreate = variantCount === 1 ? [variants[0]] : variants;
+        // CREATE
+        const base = variantCount === 1 ? [variants[0]] : variants;
+        // If there are existing labels and user didn't choose "new",
+        // enforce the chosen existing label for consistency.
+        const normalized = base.map((v) => ({
+          ...v,
+          label:
+            (existingLabels && existingLabels.length && !useNewLabel)
+              ? chosenLabel
+              : (v.label || chosenLabel || "Variant 1"),
+        }));
+        const toCreate = normalized;
 
         let failed: string[] = [];
         for (let i = 0; i < toCreate.length; i++) {
@@ -338,7 +374,6 @@ export default function AddWork({
             override_reason: v.pricingMode === "auto" ? null : v.overrideReason || null,
             note: note || null,
             delivered_at: markDelivered ? new Date().toISOString() : null,
-            /** NEW: store per-variant label */
             variant_label: v.label || null,
           };
 
@@ -427,6 +462,12 @@ export default function AddWork({
               ensureVariantCount={ensureVariantCount}
               variants={variants}
               setVariants={setVariants}
+              // NEW
+              existingLabels={existingLabels ?? []}
+              useNewLabel={useNewLabel}
+              setUseNewLabel={setUseNewLabel}
+              chosenLabel={chosenLabel}
+              setChosenLabel={setChosenLabel}
               err={err}
               saving={saving}
               onSubmit={onSubmit}
@@ -455,7 +496,10 @@ export default function AddWork({
 
   return (
     <>
-      <button className="rounded-xl border px-3 py-1.5" onClick={openModal}>
+      <button
+        className="rounded-xl border border-neutral-300 px-3 py-1.5 text-sm text-neutral-800 hover:bg-white/60 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
+        onClick={openModal}
+      >
         {isEdit ? "Edit entry" : "Add entry"}
       </button>
       {modal}
@@ -475,24 +519,21 @@ function Modal({
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 overscroll-contain"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overscroll-contain"
       role="dialog"
       aria-modal="true"
     >
-      {/* overflow-hidden keeps header fixed while body scrolls */}
-      <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-        {/* Sticky-ish header (remains visible while content scrolls) */}
-        <div className="flex items-center justify-between border-b px-6 py-4">
-          <h3 className="text-lg font-medium">{title}</h3>
+      <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-neutral-200 bg-white text-neutral-900 shadow-2xl dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100">
+        <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4 dark:border-neutral-700">
+          <h3 className="text-base font-medium">{title}</h3>
           <button
             onClick={onClose}
-            className="rounded-xl border px-3 py-1 text-sm"
+            className="rounded-xl border border-neutral-300 px-3 py-1 text-sm hover:bg-white/60 dark:border-neutral-600 dark:hover:bg-neutral-800"
           >
             Close
           </button>
         </div>
 
-        {/* The content area that can scroll independently */}
         <div className="max-h-[80vh] overflow-y-auto px-6 py-4">
           {children}
         </div>
@@ -500,7 +541,6 @@ function Modal({
     </div>
   );
 }
-
 
 function WorkForm(props: {
   isEdit: boolean;
@@ -532,14 +572,21 @@ function WorkForm(props: {
   singleReason: string;
   setSingleReason: (v: string) => void;
   singlePreview: number;
-  singleVariantLabel: string; // NEW
-  setSingleVariantLabel: (v: string) => void; // NEW
+  singleVariantLabel: string;
+  setSingleVariantLabel: (v: string) => void;
 
   // variants (create)
   variantCount: number;
   ensureVariantCount: (n: number) => void;
   variants: Variant[];
   setVariants: React.Dispatch<React.SetStateAction<Variant[]>>;
+
+  // NEW for existing-labels flow
+  existingLabels: string[];
+  useNewLabel: boolean;
+  setUseNewLabel: (v: boolean) => void;
+  chosenLabel: string;
+  setChosenLabel: (s: string) => void;
 
   err: string | null;
   saving: boolean;
@@ -571,60 +618,112 @@ function WorkForm(props: {
     singleVariantLabel, setSingleVariantLabel,
     // variants
     variantCount, ensureVariantCount, variants, setVariants,
+    // NEW
+    existingLabels, useNewLabel, setUseNewLabel, chosenLabel, setChosenLabel,
     err, saving, onSubmit, onDelete, onCancel,
   } = props;
 
   const onNumOnly = (v: string) => v === "" || /^[0-9]+$/.test(v);
+  const input =
+    "w-full rounded-xl border border-neutral-300 bg-white p-2 text-sm outline-none placeholder-neutral-400 focus:ring dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:placeholder-neutral-500";
+  const select =
+    "w-full rounded-xl border border-neutral-300 bg-white p-2 text-sm outline-none focus:ring dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
+  const chip =
+    "inline-flex items-center gap-2 rounded-xl border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700";
 
   return (
     <form onSubmit={onSubmit} className="space-y-5">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <label className="mb-1 block text-sm">Date</label>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-full rounded-xl border p-2 outline-none focus:ring"
-            required
-          />
+          <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">Date</label>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={input} required />
         </div>
         <div>
-          <label className="mb-1 block text-sm">Project</label>
-          <input
-            value={project}
-            onChange={(e) => setProject(e.target.value)}
-            className="w-full rounded-xl border p-2 outline-none focus:ring"
-            placeholder="Project name"
-          />
+          <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">Project</label>
+          <input value={project} onChange={(e) => setProject(e.target.value)} className={input} placeholder="Project name" />
         </div>
       </div>
 
       {!isEdit ? (
         <>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm">Project variants (count)</label>
-              <input
-                type="number"
-                min={1}
-                max={50}
-                value={variantCount}
-                onChange={(e) => ensureVariantCount(Number(e.target.value || 1))}
-                className="w-full rounded-xl border p-2 outline-none focus:ring"
-              />
-            </div>
-          </div>
+          {existingLabels.length > 0 ? (
+            // --------- EXISTING VARIANTS: choose one or create a new label (single entry) ---------
+            <>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">Variant</label>
+                  <select
+                    value={useNewLabel ? "__new__" : chosenLabel}
+                    onChange={(e) => {
+                      if (e.target.value === "__new__") {
+                        setUseNewLabel(true);
+                        setChosenLabel("");
+                        setVariants((arr) => [{ ...arr[0], label: "" }]);
+                      } else {
+                        setUseNewLabel(false);
+                        setChosenLabel(e.target.value);
+                        setVariants((arr) => [{ ...arr[0], label: e.target.value }]);
+                      }
+                    }}
+                    className={select}
+                  >
+                    {existingLabels.map((l) => (
+                      <option key={l} value={l}>{l}</option>
+                    ))}
+                    <option value="__new__">+ Create new variant…</option>
+                  </select>
+                </div>
 
-          <div className="space-y-6">
-            {variants.map((v, idx) => {
-              const final = variantFinalTotal(v, defaultRate);
-              return (
-                <div key={idx} className="rounded-2xl border p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="flex flex-wrap gap-2">
+                {useNewLabel && (
+                  <div>
+                    <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">New variant name</label>
+                    <input
+                      value={chosenLabel}
+                      onChange={(e) => {
+                        setChosenLabel(e.target.value);
+                        setVariants((arr) => [{ ...arr[0], label: e.target.value }]);
+                      }}
+                      placeholder="e.g., Variant A"
+                      className={input}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* single-variant editor (label controlled above) */}
+              <SingleVariantEditor
+                v={variants[0]}
+                idx={0}
+                defaultRate={defaultRate}
+                setVariants={setVariants}
+                input={input}
+                select={select}
+                chip={chip}
+              />
+            </>
+          ) : (
+            // --------- NO EXISTING VARIANTS: original multi-variant creator ---------
+            <>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">Project variants (count)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={variantCount}
+                    onChange={(e) => ensureVariantCount(Number(e.target.value || 1))}
+                    className={input}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                {variants.map((v, idx) => (
+                  <div key={idx} className="rounded-2xl border border-neutral-200 p-4 dark:border-neutral-700">
+                    <div className="mb-3 flex items-center justify-between">
                       <input
-                        className="rounded-xl border px-3 py-1.5"
+                        className={input}
                         value={v.label}
                         onChange={(e) =>
                           setVariants((arr) => {
@@ -635,244 +734,47 @@ function WorkForm(props: {
                         }
                         placeholder="Variant label"
                       />
-                    </div>
-                    {variantCount > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setVariants((arr) => arr.filter((_, i) => i !== idx));
-                          ensureVariantCount(variantCount - 1);
-                        }}
-                        className="rounded-xl border px-3 py-1 text-sm"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="mb-1 block text-sm">Basis</label>
-                      <select
-                        value={v.basis}
-                        onChange={(e) =>
-                          setVariants((arr) => {
-                            const copy = [...arr];
-                            copy[idx] = { ...copy[idx], basis: e.target.value as Basis };
-                            return copy;
-                          })
-                        }
-                        className="w-full rounded-xl border p-2 outline-none focus:ring"
-                      >
-                        <option value="second">second</option>
-                        <option value="minute">minute</option>
-                        <option value="hour">hour</option>
-                        <option value="project">project</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="mb-1 block text-sm">
-                        {v.basis === "project" ? "Units" : "Duration"}
-                      </label>
-                      {v.basis === "project" ? (
-                        <input
-                          type="number"
-                          min={1}
-                          value={v.projectUnits}
-                          onChange={(e) =>
-                            setVariants((arr) => {
-                              const copy = [...arr];
-                              copy[idx] = {
-                                ...copy[idx],
-                                projectUnits: Math.max(1, Number(e.target.value || 1)),
-                              };
-                              return copy;
-                            })
-                          }
-                          className="w-full rounded-xl border p-2 outline-none focus:ring"
-                        />
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <input
-                            inputMode="numeric"
-                            value={v.minutes}
-                            onChange={(e) =>
-                              onNumOnly(e.target.value) &&
-                              setVariants((arr) => {
-                                const copy = [...arr];
-                                copy[idx] = { ...copy[idx], minutes: e.target.value };
-                                return copy;
-                              })
-                            }
-                            placeholder="min"
-                            className="w-full rounded-xl border p-2 outline-none focus:ring"
-                          />
-                          <span className="text-sm text-neutral-500">min</span>
-                          <input
-                            inputMode="numeric"
-                            value={v.seconds}
-                            onChange={(e) =>
-                              onNumOnly(e.target.value) &&
-                              setVariants((arr) => {
-                                const copy = [...arr];
-                                copy[idx] = { ...copy[idx], seconds: e.target.value };
-                                return copy;
-                              })
-                            }
-                            placeholder="sec"
-                            className="w-full rounded-xl border p-2 outline-none focus:ring"
-                          />
-                          <span className="text-sm text-neutral-500">sec</span>
-                        </div>
+                      {variantCount > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVariants((arr) => arr.filter((_, i) => i !== idx));
+                            ensureVariantCount(variantCount - 1);
+                          }}
+                          className="ml-3 rounded-xl border border-neutral-300 px-3 py-1 text-sm hover:bg-white/60 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                        >
+                          Remove
+                        </button>
                       )}
                     </div>
+
+                    <SingleVariantEditor
+                      v={v}
+                      idx={idx}
+                      defaultRate={defaultRate}
+                      setVariants={setVariants}
+                      input={input}
+                      select={select}
+                      chip={chip}
+                    />
                   </div>
-
-                  <div>
-                    <label className="mb-2 mt-2 block text-sm">Pricing mode</label>
-                    <div className="flex flex-wrap gap-3">
-                      <label className="inline-flex items-center gap-2 rounded-xl border px-3 py-2">
-                        <input
-                          type="radio"
-                          name={`pricing-${idx}`}
-                          checked={v.pricingMode === "auto"}
-                          onChange={() =>
-                            setVariants((arr) => {
-                              const copy = [...arr];
-                              copy[idx] = { ...copy[idx], pricingMode: "auto" };
-                              return copy;
-                            })
-                          }
-                        />
-                        <span>Auto (client rate – ৳{toBDT(defaultRate)})</span>
-                      </label>
-                      <label className="inline-flex items-center gap-2 rounded-xl border px-3 py-2">
-                        <input
-                          type="radio"
-                          name={`pricing-${idx}`}
-                          checked={v.pricingMode === "manual_rate"}
-                          onChange={() =>
-                            setVariants((arr) => {
-                              const copy = [...arr];
-                              copy[idx] = { ...copy[idx], pricingMode: "manual_rate" };
-                              return copy;
-                            })
-                          }
-                        />
-                        <span>Manual rate</span>
-                      </label>
-                      <label className="inline-flex items-center gap-2 rounded-xl border px-3 py-2">
-                        <input
-                          type="radio"
-                          name={`pricing-${idx}`}
-                          checked={v.pricingMode === "manual_total"}
-                          onChange={() =>
-                            setVariants((arr) => {
-                              const copy = [...arr];
-                              copy[idx] = { ...copy[idx], pricingMode: "manual_total" };
-                              return copy;
-                            })
-                          }
-                        />
-                        <span>Manual total</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  {v.pricingMode === "manual_rate" && (
-                    <div>
-                      <label className="mb-1 block text-sm">Custom rate</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={v.customRate}
-                        onChange={(e) =>
-                          setVariants((arr) => {
-                            const copy = [...arr];
-                            copy[idx] = {
-                              ...copy[idx],
-                              customRate: e.target.value === "" ? "" : Number(e.target.value),
-                            };
-                            return copy;
-                          })
-                        }
-                        className="w-full rounded-xl border p-2 outline-none focus:ring"
-                        placeholder="e.g., 400"
-                      />
-                    </div>
-                  )}
-
-                  {v.pricingMode === "manual_total" && (
-                    <div>
-                      <label className="mb-1 block text-sm">Manual total</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={v.manualTotal}
-                        onChange={(e) =>
-                          setVariants((arr) => {
-                            const copy = [...arr];
-                            copy[idx] = {
-                              ...copy[idx],
-                              manualTotal: e.target.value === "" ? "" : Number(e.target.value),
-                            };
-                            return copy;
-                          })
-                        }
-                        className="w-full rounded-xl border p-2 outline-none focus:ring"
-                        placeholder="e.g., 3000"
-                      />
-                    </div>
-                  )}
-
-                  {v.pricingMode !== "auto" && (
-                    <div>
-                      <label className="mb-1 block text-sm">Override reason (optional)</label>
-                      <input
-                        value={v.overrideReason}
-                        onChange={(e) =>
-                          setVariants((arr) => {
-                            const copy = [...arr];
-                            copy[idx] = { ...copy[idx], overrideReason: e.target.value };
-                            return copy;
-                          })
-                        }
-                        className="w-full rounded-xl border p-2 outline-none focus:ring"
-                        placeholder="Why was this price overridden?"
-                      />
-                    </div>
-                  )}
-
-                  <div className="mt-2 text-sm text-neutral-600">
-                    Preview total: <span className="tabular-nums">৳{toBDT(final)}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                ))}
+              </div>
+            </>
+          )}
         </>
       ) : (
         /* ----------------------- edit: single entry UI ---------------------- */
-        <div className="space-y-4 rounded-2xl border p-4">
+        <div className="space-y-4 rounded-2xl border border-neutral-200 p-4 dark:border-neutral-700">
           <div>
-            <label className="mb-1 block text-sm">Variant label (optional)</label>
-            <input
-              value={singleVariantLabel}
-              onChange={(e) => setSingleVariantLabel(e.target.value)}
-              className="w-full rounded-xl border p-2 outline-none focus:ring"
-              placeholder="e.g., Variant A"
-            />
+            <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">Variant label (optional)</label>
+            <input value={singleVariantLabel} onChange={(e) => setSingleVariantLabel(e.target.value)} className={input} placeholder="e.g., Variant A" />
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm">Basis</label>
-              <select
-                value={singleBasis}
-                onChange={(e) => setSingleBasis(e.target.value as Basis)}
-                className="w-full rounded-xl border p-2 outline-none focus:ring"
-              >
+              <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">Basis</label>
+              <select value={singleBasis} onChange={(e) => setSingleBasis(e.target.value as Basis)} className={select}>
                 <option value="second">second</option>
                 <option value="minute">minute</option>
                 <option value="hour">hour</option>
@@ -881,68 +783,35 @@ function WorkForm(props: {
             </div>
 
             <div>
-              <label className="mb-1 block text-sm">
+              <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">
                 {singleBasis === "project" ? "Units" : "Duration"}
               </label>
               {singleBasis === "project" ? (
-                <input
-                  type="number"
-                  min={1}
-                  value={singleUnits}
-                  onChange={(e) => setSingleUnits(Math.max(1, Number(e.target.value || 1)))}
-                  className="w-full rounded-xl border p-2 outline-none focus:ring"
-                />
+                <input type="number" min={1} value={singleUnits} onChange={(e) => setSingleUnits(Math.max(1, Number(e.target.value || 1)))} className={input} />
               ) : (
                 <div className="flex items-center gap-2">
-                  <input
-                    inputMode="numeric"
-                    value={singleMin}
-                    onChange={(e) => onNumOnly(e.target.value) && setSingleMin(e.target.value)}
-                    placeholder="min"
-                    className="w-full rounded-xl border p-2 outline-none focus:ring"
-                  />
-                  <span className="text-sm text-neutral-500">min</span>
-                  <input
-                    inputMode="numeric"
-                    value={singleSec}
-                    onChange={(e) => onNumOnly(e.target.value) && setSingleSec(e.target.value)}
-                    placeholder="sec"
-                    className="w-full rounded-xl border p-2 outline-none focus:ring"
-                  />
-                  <span className="text-sm text-neutral-500">sec</span>
+                  <input inputMode="numeric" value={singleMin} onChange={(e) => onNumOnly(e.target.value) && setSingleMin(e.target.value)} placeholder="min" className={input} />
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">min</span>
+                  <input inputMode="numeric" value={singleSec} onChange={(e) => onNumOnly(e.target.value) && setSingleSec(e.target.value)} placeholder="sec" className={input} />
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">sec</span>
                 </div>
               )}
             </div>
           </div>
 
           <div>
-            <label className="mb-2 block text-sm">Pricing mode</label>
+            <label className="mb-2 block text-xs text-neutral-600 dark:text-neutral-400">Pricing mode</label>
             <div className="flex flex-wrap gap-3">
-              <label className="inline-flex items-center gap-2 rounded-xl border px-3 py-2">
-                <input
-                  type="radio"
-                  name="pricing-single"
-                  checked={singlePricing === "auto"}
-                  onChange={() => setSinglePricing("auto")}
-                />
+              <label className={chip}>
+                <input type="radio" name="pricing-single" checked={singlePricing === "auto"} onChange={() => setSinglePricing("auto")} />
                 <span>Auto (client rate – ৳{toBDT(defaultRate)})</span>
               </label>
-              <label className="inline-flex items-center gap-2 rounded-xl border px-3 py-2">
-                <input
-                  type="radio"
-                  name="pricing-single"
-                  checked={singlePricing === "manual_rate"}
-                  onChange={() => setSinglePricing("manual_rate")}
-                />
+              <label className={chip}>
+                <input type="radio" name="pricing-single" checked={singlePricing === "manual_rate"} onChange={() => setSinglePricing("manual_rate")} />
                 <span>Manual rate</span>
               </label>
-              <label className="inline-flex items-center gap-2 rounded-xl border px-3 py-2">
-                <input
-                  type="radio"
-                  name="pricing-single"
-                  checked={singlePricing === "manual_total"}
-                  onChange={() => setSinglePricing("manual_total")}
-                />
+              <label className={chip}>
+                <input type="radio" name="pricing-single" checked={singlePricing === "manual_total"} onChange={() => setSinglePricing("manual_total")} />
                 <span>Manual total</span>
               </label>
             </div>
@@ -950,67 +819,39 @@ function WorkForm(props: {
 
           {singlePricing === "manual_rate" && (
             <div>
-              <label className="mb-1 block text-sm">Custom rate</label>
-              <input
-                type="number"
-                min={0}
-                value={singleRate}
-                onChange={(e) => setSingleRate(e.target.value === "" ? "" : Number(e.target.value))}
-                className="w-full rounded-xl border p-2 outline-none focus:ring"
-                placeholder="e.g., 400"
-              />
+              <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">Custom rate</label>
+              <input type="number" min={0} value={singleRate} onChange={(e) => setSingleRate(e.target.value === "" ? "" : Number(e.target.value))} className={input} placeholder="e.g., 400" />
             </div>
           )}
 
           {singlePricing === "manual_total" && (
             <div>
-              <label className="mb-1 block text-sm">Manual total</label>
-              <input
-                type="number"
-                min={0}
-                value={singleTotal}
-                onChange={(e) => setSingleTotal(e.target.value === "" ? "" : Number(e.target.value))}
-                className="w-full rounded-xl border p-2 outline-none focus:ring"
-                placeholder="e.g., 3000"
-              />
+              <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">Manual total</label>
+              <input type="number" min={0} value={singleTotal} onChange={(e) => setSingleTotal(e.target.value === "" ? "" : Number(e.target.value))} className={input} placeholder="e.g., 3000" />
             </div>
           )}
 
           {singlePricing !== "auto" && (
             <div>
-              <label className="mb-1 block text-sm">Override reason (optional)</label>
-              <input
-                value={singleReason}
-                onChange={(e) => setSingleReason(e.target.value)}
-                className="w-full rounded-xl border p-2 outline-none focus:ring"
-                placeholder="Why was this price overridden?"
-              />
+              <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">Override reason (optional)</label>
+              <input value={singleReason} onChange={(e) => setSingleReason(e.target.value)} className={input} placeholder="Why was this price overridden?" />
             </div>
           )}
 
-          <div className="text-sm text-neutral-600">
+          <div className="text-sm text-neutral-600 dark:text-neutral-400">
             Preview total: <span className="tabular-nums">৳{toBDT(singlePreview)}</span>
           </div>
         </div>
       )}
 
       <div>
-        <label className="mb-1 block text-sm">Note</label>
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          rows={3}
-          className="w-full resize-none rounded-xl border p-2 outline-none focus:ring"
-        />
+        <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">Note</label>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} className={input + " resize-none"} />
       </div>
 
       <div className="flex items-center justify-between">
-        <label className="inline-flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={markDelivered}
-            onChange={(e) => setMarkDelivered(e.target.checked)}
-          />
+        <label className="inline-flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={markDelivered} onChange={(e) => setMarkDelivered(e.target.checked)} />
           <span>Mark delivered</span>
         </label>
 
@@ -1020,21 +861,21 @@ function WorkForm(props: {
               type="button"
               onClick={onDelete}
               disabled={saving}
-              className="rounded-xl border px-4 py-2 text-red-600 disabled:opacity-50"
+              className="rounded-xl border border-neutral-300 px-4 py-2 text-sm text-red-600 hover:bg-white/60 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
             >
               Delete
             </button>
           )}
           <button
             type="button"
-            className="rounded-xl border px-4 py-2"
+            className="rounded-xl border border-neutral-300 px-4 py-2 text-sm hover:bg-white/60 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
             onClick={onCancel}
             disabled={saving}
           >
             Cancel
           </button>
           <button
-            className="rounded-xl bg-black px-4 py-2 text-white disabled:opacity-50"
+            className="rounded-xl bg-black px-4 py-2 text-sm text-white disabled:opacity-50 dark:bg-white dark:text-black"
             disabled={saving}
             type="submit"
           >
@@ -1043,7 +884,222 @@ function WorkForm(props: {
         </div>
       </div>
 
-      {err && <p className="text-sm text-red-600">{err}</p>}
+      {err && <p className="text-sm text-rose-600">{err}</p>}
     </form>
+  );
+}
+
+/* ------------------------- small subcomponent ------------------------- */
+function SingleVariantEditor({
+  v,
+  idx,
+  defaultRate,
+  setVariants,
+  input,
+  select,
+  chip,
+}: {
+  v: Variant;
+  idx: number;
+  defaultRate: number;
+  setVariants: React.Dispatch<React.SetStateAction<Variant[]>>;
+  input: string;
+  select: string;
+  chip: string;
+}) {
+  const final = variantFinalTotal(v, defaultRate);
+  const onNumOnly = (val: string) => val === "" || /^[0-9]+$/.test(val);
+
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">Basis</label>
+          <select
+            value={v.basis}
+            onChange={(e) =>
+              setVariants((arr) => {
+                const copy = [...arr];
+                copy[idx] = { ...copy[idx], basis: e.target.value as Basis };
+                return copy;
+              })
+            }
+            className={select}
+          >
+            <option value="second">second</option>
+            <option value="minute">minute</option>
+            <option value="hour">hour</option>
+            <option value="project">project</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">
+            {v.basis === "project" ? "Units" : "Duration"}
+          </label>
+          {v.basis === "project" ? (
+            <input
+              type="number"
+              min={1}
+              value={v.projectUnits}
+              onChange={(e) =>
+                setVariants((arr) => {
+                  const copy = [...arr];
+                  copy[idx] = { ...copy[idx], projectUnits: Math.max(1, Number(e.target.value || 1)) };
+                  return copy;
+                })
+              }
+              className={input}
+            />
+          ) : (
+            <div className="flex items-center gap-2">
+              <input
+                inputMode="numeric"
+                value={v.minutes}
+                onChange={(e) =>
+                  onNumOnly(e.target.value) &&
+                  setVariants((arr) => {
+                    const copy = [...arr];
+                    copy[idx] = { ...copy[idx], minutes: e.target.value };
+                    return copy;
+                  })
+                }
+                placeholder="min"
+                className={input}
+              />
+              <span className="text-xs text-neutral-500 dark:text-neutral-400">min</span>
+              <input
+                inputMode="numeric"
+                value={v.seconds}
+                onChange={(e) =>
+                  onNumOnly(e.target.value) &&
+                  setVariants((arr) => {
+                    const copy = [...arr];
+                    copy[idx] = { ...copy[idx], seconds: e.target.value };
+                    return copy;
+                  })
+                }
+                placeholder="sec"
+                className={input}
+              />
+              <span className="text-xs text-neutral-500 dark:text-neutral-400">sec</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <label className="mb-2 mt-2 block text-xs text-neutral-600 dark:text-neutral-400">Pricing mode</label>
+        <div className="flex flex-wrap gap-3">
+          <label className={chip}>
+            <input
+              type="radio"
+              name={`pricing-${idx}`}
+              checked={v.pricingMode === "auto"}
+              onChange={() =>
+                setVariants((arr) => {
+                  const copy = [...arr];
+                  copy[idx] = { ...copy[idx], pricingMode: "auto" };
+                  return copy;
+                })
+              }
+            />
+            <span>Auto (client rate – ৳{toBDT(defaultRate)})</span>
+          </label>
+          <label className={chip}>
+            <input
+              type="radio"
+              name={`pricing-${idx}`}
+              checked={v.pricingMode === "manual_rate"}
+              onChange={() =>
+                setVariants((arr) => {
+                  const copy = [...arr];
+                  copy[idx] = { ...copy[idx], pricingMode: "manual_rate" };
+                  return copy;
+                })
+              }
+            />
+            <span>Manual rate</span>
+          </label>
+          <label className={chip}>
+            <input
+              type="radio"
+              name={`pricing-${idx}`}
+              checked={v.pricingMode === "manual_total"}
+              onChange={() =>
+                setVariants((arr) => {
+                  const copy = [...arr];
+                  copy[idx] = { ...copy[idx], pricingMode: "manual_total" };
+                  return copy;
+                })
+              }
+            />
+            <span>Manual total</span>
+          </label>
+        </div>
+      </div>
+
+      {v.pricingMode === "manual_rate" && (
+        <div>
+          <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">Custom rate</label>
+          <input
+            type="number"
+            min={0}
+            value={v.customRate}
+            onChange={(e) =>
+              setVariants((arr) => {
+                const copy = [...arr];
+                copy[idx] = { ...copy[idx], customRate: e.target.value === "" ? "" : Number(e.target.value) };
+                return copy;
+              })
+            }
+            className={input}
+            placeholder="e.g., 400"
+          />
+        </div>
+      )}
+
+      {v.pricingMode === "manual_total" && (
+        <div>
+          <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">Manual total</label>
+          <input
+            type="number"
+            min={0}
+            value={v.manualTotal}
+            onChange={(e) =>
+              setVariants((arr) => {
+                const copy = [...arr];
+                copy[idx] = { ...copy[idx], manualTotal: e.target.value === "" ? "" : Number(e.target.value) };
+                return copy;
+              })
+            }
+            className={input}
+            placeholder="e.g., 3000"
+          />
+        </div>
+      )}
+
+      {v.pricingMode !== "auto" && (
+        <div>
+          <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">Override reason (optional)</label>
+          <input
+            value={v.overrideReason}
+            onChange={(e) =>
+              setVariants((arr) => {
+                const copy = [...arr];
+                copy[idx] = { ...copy[idx], overrideReason: e.target.value };
+                return copy;
+              })
+            }
+            className={input}
+            placeholder="Why was this price overridden?"
+          />
+        </div>
+      )}
+
+      <div className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+        Preview total: <span className="tabular-nums">৳{toBDT(final)}</span>
+      </div>
+    </>
   );
 }

@@ -1,6 +1,7 @@
-// app/(app)/clients/page.tsx
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { Calendar, RotateCcw } from "lucide-react";
+
 
 import Panel from "./_components/Panel";
 import StatCard from "./_components/StatCard";
@@ -10,6 +11,10 @@ import ClientsToolbar from "./_components/ClientsToolbar";
 
 import { arrParam, keepParams, money } from "./_lib/table";
 import { getGlobalTotals } from "@/app/(app)/_lib/stats";
+
+// ---- NEW animated helpers ----
+import AnimatedDetails from "./_components/AnimatedDetails";
+import MotionFade from "./_components/MotionFade";
 
 /* ---- types ---- */
 type Client = {
@@ -266,144 +271,177 @@ export default async function DashboardPage({
     "bulk",
   ];
 
-  return (
-    <main className="w-full px-6 xl:px-10 py-10 space-y-8">
-      {/* -------- Analytics (collapsible) -------- */}
-      <details open className="rounded-2xl border bg-white/95 shadow-sm">
-        <summary className="cursor-pointer select-none list-none px-5 py-3 text-sm font-medium text-neutral-800">
-          <div className="flex items-center justify-between">
-            <span>Welcome Rahi! Here’s your analytics at a glance</span>
-            <span className="text-neutral-500">Toggle</span>
-          </div>
-        </summary>
+return (
+  <main className="w-full px-6 xl:px-10 py-10 space-y-8 relative">
+    {/* page background accent */}
+    <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-indigo-50/40 to-transparent dark:from-indigo-900/15" />
 
-        <div className="px-5 pb-5">
-          {/* KPI date range */}
-          <form method="get" className="mb-4 flex flex-wrap items-end gap-3">
+    {/* ---------- Analytics (collapsible, animated) ---------- */}
+    <AnimatedDetails
+      defaultOpen={false}
+      className="relative"
+      title={<span>Welcome Rahi! Here’s your analytics at a glance</span>}
+      right={<span className="text-neutral-500 dark:text-neutral-400">Toggle</span>}
+    >
+      {/* Date toolbar */}
+      <MotionFade y={10}>
+        <form
+          method="get"
+          className="mb-4 flex flex-wrap items-end gap-3 rounded-2xl border border-neutral-200 bg-white/85 p-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/75"
+        >
+          <div className="flex items-end gap-3">
+            {/* start */}
             <div>
-              <label className="mb-1 block text-xs text-neutral-600">
+              <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">
                 Start date
               </label>
-              <input
-                type="date"
-                name="start"
-                defaultValue={start ?? ""}
-                className="w-[180px] rounded-xl border p-2 outline-none focus:ring"
-              />
+              <div className="relative">
+                <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-neutral-400 dark:text-neutral-500">
+                  <Calendar size={16} />
+                </span>
+                <input
+                  type="date"
+                  name="start"
+                  defaultValue={start ?? ""}
+                  className="w-[180px] rounded-xl border border-neutral-300 bg-white p-2 pl-8 text-neutral-900 outline-none focus:ring dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+                />
+              </div>
             </div>
+
+            {/* end */}
             <div>
-              <label className="mb-1 block text-xs text-neutral-600">
+              <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">
                 End date
               </label>
-              <input
-                type="date"
-                name="end"
-                defaultValue={end ?? ""}
-                className="w-[180px] rounded-xl border p-2 outline-none focus:ring"
-              />
+              <div className="relative">
+                <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-neutral-400 dark:text-neutral-500">
+                  <Calendar size={16} />
+                </span>
+                <input
+                  type="date"
+                  name="end"
+                  defaultValue={end ?? ""}
+                  className="w-[180px] rounded-xl border border-neutral-300 bg-white p-2 pl-8 text-neutral-900 outline-none focus:ring dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+                />
+              </div>
             </div>
-            <button
-              type="submit"
-              className="h-[40px] rounded-xl border px-3 text-sm font-medium"
-            >
-              Apply
-            </button>
-            {(start || end) && (
-              <Link
-                href={keepParams(sp, persistKeys, {
-                  start: undefined,
-                  end: undefined,
-                })}
-                className="h-[40px] rounded-xl border px-3 text-sm font-medium"
-              >
-                Clear
-              </Link>
-            )}
-          </form>
 
-          {/* KPIs */}
-          <section className="grid grid-cols-12 gap-4">
-            <StatCard
-              className="col-span-12 md:col-span-3"
-              label="Global Total Projects"
-              value={`${globalProjects}`}
-              sub={[
-                { label: "Delivered", value: String(globalProjects) },
-                { label: "Processing", value: String(processingRange.length) },
-              ]}
-            />
-            {/* Payments are treated as earnings */}
-            <StatCard
-              className="col-span-12 md:col-span-3"
-              label="Global Total Earnings"
-              value={money(globalPayments)}
-            />
-            <StatCard
-              className="col-span-12 md:col-span-3"
-              label="Global Total Dues"
-              value={globalDues > 0 ? money(globalDues) : "—"}
-            />
-
-            {/* Status panel sits as the 4th block */}
-            <div className="col-span-12 md:col-span-3 rounded-2xl border bg-white p-4 shadow-sm">
-              <div className="text-xs text-neutral-500">Global Client Status</div>
-              <ul className="mt-2 space-y-1 text-sm">
-                <li className="flex items-center justify-between">
-                  <span>Active</span>
-                  <span className="font-medium">{statuses.active}</span>
-                </li>
-                <li className="flex items-center justify-between">
-                  <span>Closed</span>
-                  <span className="font-medium">{statuses.closed}</span>
-                </li>
-                <li className="flex items-center justify-between">
-                  <span>Payment expired</span>
-                  <span className="font-medium">{statuses.payment_expired}</span>
-                </li>
-              </ul>
-            </div>
-          </section>
-
-          {/* Top lists */}
-          <section className="mt-4 grid grid-cols-12 gap-4">
-            <Panel className="col-span-12 lg:col-span-6" title="Top 5 High Paying Clients">
-              <MiniTable
-                headers={["Client", "Payments"]}
-                rows={[...byClientRange.values()]
-                  .sort((a, b) => b.payments - a.payments)
-                  .slice(0, 5)
-                  .map((r) => [r.name, money(r.payments)])}
-                empty="No data"
-                rightAlign={[1]}
-              />
-            </Panel>
-            <Panel className="col-span-12 lg:col-span-6" title="Top 5 Due Clients">
-              <MiniTable
-                headers={["Client", "Due"]}
-                rows={[...byClientRange.values()]
-                  .sort((a, b) => b.dues - a.dues)
-                  .slice(0, 5)
-                  .map((r) => [r.name, money(r.dues)])}
-                empty="No data"
-                rightAlign={[1]}
-              />
-            </Panel>
-          </section>
-        </div>
-      </details>
-
-      {/* -------- Clients table (lifetime) -------- */}
-      <Panel title="Clients" className="w-full" right={<ClientsToolbar />}>
-        {bulk ? (
-          <form method="post" action="/api/clients/bulk-delete">
-            <div className="mb-3">
+            {/* actions */}
+            <div className="flex items-center gap-2 pb-[2px]">
               <button
                 type="submit"
-                className="rounded-xl bg-red-600 px-3 py-1.5 text-sm font-medium text-white"
+                className="h-[40px] rounded-xl border border-neutral-300 bg-white px-3 text-sm font-medium transition-[transform,opacity] hover:opacity-90 active:scale-[.98] dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
               >
-                Delete selected
+                Apply
               </button>
+              {(start || end) && (
+                <Link
+                  href={keepParams(sp, persistKeys, { start: undefined, end: undefined })}
+                  className="inline-flex h-[40px] items-center gap-2 rounded-xl border border-neutral-300 bg-white px-3 text-sm font-medium transition-[transform,opacity] hover:opacity-90 active:scale-[.98] dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+                >
+                  <RotateCcw size={16} />
+                  Clear
+                </Link>
+              )}
             </div>
+          </div>
+        </form>
+      </MotionFade>
+
+      {/* KPI grid */}
+      <section className="grid grid-cols-12 gap-4">
+        <MotionFade delay={0.02} className="col-span-12 md:col-span-3">
+          <StatCard
+            label="Global Total Projects"
+            value={`${globalProjects}`}
+            sub={[
+              { label: "Delivered", value: String(globalProjects) },
+              { label: "Processing", value: String(processingRange.length) },
+            ]}
+          />
+        </MotionFade>
+
+        <MotionFade delay={0.04} className="col-span-12 md:col-span-3">
+          <StatCard label="Global Total Earnings" value={money(globalPayments)} />
+        </MotionFade>
+
+        <MotionFade delay={0.06} className="col-span-12 md:col-span-3">
+          <StatCard label="Global Total Dues" value={globalDues > 0 ? money(globalDues) : "—"} />
+        </MotionFade>
+
+        {/* Status panel */}
+        <MotionFade delay={0.08} className="col-span-12 md:col-span-3">
+          <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="text-xs text-neutral-500 dark:text-neutral-400">Global Client Status</div>
+            <ul className="mt-2 space-y-1 text-sm">
+              <li className="flex items-center justify-between">
+                <span className="dark:text-neutral-200">Active</span>
+                <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-400/20">
+                  {statuses.active}
+                </span>
+              </li>
+              <li className="flex items-center justify-between">
+                <span className="dark:text-neutral-200">Closed</span>
+                <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-slate-500/15 dark:text-slate-300 dark:ring-slate-400/20">
+                  {statuses.closed}
+                </span>
+              </li>
+              <li className="flex items-center justify-between">
+                <span className="dark:text-neutral-200">Payment expired</span>
+                <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-400/20">
+                  {statuses.payment_expired}
+                </span>
+              </li>
+            </ul>
+          </div>
+        </MotionFade>
+      </section>
+
+      {/* Top lists */}
+      <section className="mt-4 grid grid-cols-12 gap-4">
+        <MotionFade delay={0.1} className="col-span-12 lg:col-span-6">
+          <Panel title="Top 5 High Paying Clients">
+            <MiniTable
+              headers={["Client", "Payments"]}
+              rows={[...byClientRange.values()]
+                .sort((a, b) => b.payments - a.payments)
+                .slice(0, 5)
+                .map((r) => [r.name, money(r.payments)])}
+              empty="No data"
+              rightAlign={[1]}
+            />
+          </Panel>
+        </MotionFade>
+
+        <MotionFade delay={0.12} className="col-span-12 lg:col-span-6">
+          <Panel title="Top 5 Due Clients">
+            <MiniTable
+              headers={["Client", "Due"]}
+              rows={[...byClientRange.values()]
+                .sort((a, b) => b.dues - a.dues)
+                .slice(0, 5)
+                .map((r) => [r.name, money(r.dues)])}
+              empty="No data"
+              rightAlign={[1]}
+            />
+          </Panel>
+        </MotionFade>
+      </section>
+    </AnimatedDetails>
+
+    {/* ---------- Clients table (lifetime) ---------- */}
+    <Panel title="Clients" className="w-full" right={<ClientsToolbar />}>
+      {bulk ? (
+        <form method="post" action="/api/clients/bulk-delete">
+          <div className="mb-3">
+            <button
+              type="submit"
+              className="rounded-xl bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-[transform,opacity] hover:opacity-90 active:scale-[.98]"
+            >
+              Delete selected
+            </button>
+          </div>
+          <MotionFade y={12}>
             <ClientsTable
               rows={rows}
               selectedCharged={selectedCharged}
@@ -416,8 +454,10 @@ export default async function DashboardPage({
               sortDir={sortDir}
               bulk
             />
-          </form>
-        ) : (
+          </MotionFade>
+        </form>
+      ) : (
+        <MotionFade y={12}>
           <ClientsTable
             rows={rows}
             selectedCharged={selectedCharged}
@@ -430,8 +470,11 @@ export default async function DashboardPage({
             sortDir={sortDir}
             bulk={false}
           />
-        )}
-      </Panel>
-    </main>
-  );
+        </MotionFade>
+      )}
+    </Panel>
+  </main>
+);
+
+
 }

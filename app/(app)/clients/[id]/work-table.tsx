@@ -20,53 +20,59 @@ export default async function WorkTable({
 }) {
   const supabase = await createClient();
 
-  // try selecting variant_label; if column doesn't exist, fall back gracefully
+  // columns
   const baseCols =
     "id,date,project_name,status,pricing_mode,charged_by_snapshot,rate_snapshot,duration_seconds,units,amount_due,override_reason,delivered_at,note";
   const colsWithVariant = `${baseCols},variant_label`;
 
-  let query = supabase
-    .from("work_entries")
-    .select(colsWithVariant)
-    .eq("client_id", clientId);
+  // Build the work query with filters applied
+  const buildWorkQuery = (cols: string) => {
+    let q = supabase.from("work_entries").select(cols).eq("client_id", clientId);
+    if (filters.status !== "all") q = q.eq("status", filters.status);
+    if (filters.basis !== "all") q = q.eq("charged_by_snapshot", filters.basis);
+    if (filters.mode !== "all") q = q.eq("pricing_mode", filters.mode);
+    return q.order("date", { ascending: false });
+  };
 
-  // server-side filters you already have
-  if (filters.status !== "all") query = query.eq("status", filters.status);
-  if (filters.basis !== "all")
-    query = query.eq("charged_by_snapshot", filters.basis);
-  if (filters.mode !== "all") query = query.eq("pricing_mode", filters.mode);
+  // Fetch rows (try with variant_label), and the client's basis/rate in parallel
+  const [rowsTry, clientMeta] = await Promise.all([
+    buildWorkQuery(colsWithVariant),
+    supabase
+      .from("clients")
+      .select("charged_by,rate")
+      .eq("id", clientId)
+      .maybeSingle<{ charged_by: "second" | "minute" | "hour" | "project"; rate: number }>(),
+  ]);
 
-  let { data, error } = await query.order("date", { ascending: false });
+  let data = rowsTry.data as WorkRowWithVariant[] | null;
+  let error = rowsTry.error;
 
   // If variant_label doesn't exist in schema, retry without it.
   if (error && /variant_label/i.test(error.message || "")) {
-    let q2 = supabase
-      .from("work_entries")
-      .select(baseCols)
-      .eq("client_id", clientId);
-
-    if (filters.status !== "all") q2 = q2.eq("status", filters.status);
-    if (filters.basis !== "all")
-      q2 = q2.eq("charged_by_snapshot", filters.basis);
-    if (filters.mode !== "all") q2 = q2.eq("pricing_mode", filters.mode);
-
-    const retry = await q2.order("date", { ascending: false });
+    const retry = await buildWorkQuery(baseCols);
     data = retry.data as any;
     error = retry.error as any;
   }
 
   if (error) {
-    return <div className="text-red-700">{error.message}</div>;
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-300">
+        {error.message}
+      </div>
+    );
   }
 
   const rows = (data ?? []) as WorkRowWithVariant[];
+  const defaultBasis = clientMeta.data?.charged_by ?? "minute";
+  const defaultRate = Number(clientMeta.data?.rate ?? 0);
+
   return (
     <WorkTableClient
       rows={rows}
       clientId={clientId}
       right={right}
-      defaultBasis="minute"
-      defaultRate={0}
+      defaultBasis={defaultBasis}
+      defaultRate={defaultRate}
     />
   );
 }

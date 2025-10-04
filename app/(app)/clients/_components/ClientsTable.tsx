@@ -7,8 +7,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import SortableHeader from "./SortableHeader";
 import HeaderMultiSelect from "./HeaderMultiSelect";
 import DateHeaderRange from "./DateHeaderRange";
+import { AnimatePresence, motion } from "framer-motion";
 
-/** ---------------- Types (earnings removed) ---------------- */
+/** ---------------- Types ---------------- */
 export type Row = {
   client: {
     id: string;
@@ -18,7 +19,7 @@ export type Row = {
     created_at?: string | null;
   };
   projects: number;
-  payments: number; // <- we will DISPLAY this as “Earnings”
+  payments: number; // DISPLAY as “Earnings”
   dues: number;
   activeDays: number;
   lastDate: string | null;
@@ -36,12 +37,14 @@ type Props = {
 };
 
 /** ---------------- Helpers ---------------- */
+function cx(...a: Array<string | false | null | undefined>) {
+  return a.filter(Boolean).join(" ");
+}
 function money(n: number) {
   return `৳${Number(n || 0).toLocaleString("en-BD", {
     maximumFractionDigits: 2,
   })}`;
 }
-
 const shortDate = (iso: string | null | undefined) =>
   iso
     ? new Intl.DateTimeFormat("en-GB", {
@@ -58,6 +61,25 @@ function cmp(a: any, b: any) {
   if (typeof a === "string" && typeof b === "string") return a.localeCompare(b);
   return a < b ? -1 : a > b ? 1 : 0;
 }
+
+const statusClass: Record<Row["client"]["status"], string> = {
+  active:
+    "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-900/40",
+  closed:
+    "bg-slate-50 text-slate-700 ring-1 ring-slate-200 dark:bg-slate-900/40 dark:text-slate-300 dark:ring-slate-800/40",
+  payment_expired:
+    "bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-900/40",
+};
+const chargedClass: Record<Row["client"]["charged_by"], string> = {
+  second:
+    "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200 dark:bg-indigo-950/30 dark:text-indigo-300 dark:ring-indigo-900/40",
+  minute:
+    "bg-blue-50 text-blue-700 ring-1 ring-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:ring-blue-900/40",
+  hour:
+    "bg-purple-50 text-purple-700 ring-1 ring-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:ring-purple-900/40",
+  project:
+    "bg-fuchsia-50 text-fuchsia-700 ring-1 ring-fuchsia-200 dark:bg-fuchsia-950/30 dark:text-fuchsia-300 dark:ring-fuchsia-900/40",
+};
 
 /** ---------------- Component ---------------- */
 export default function ClientsTable({
@@ -82,7 +104,6 @@ export default function ClientsTable({
   const [checked, setChecked] = React.useState<Record<string, boolean>>({});
   const allIds = React.useMemo(() => rows.map((r) => r.client.id), [rows]);
   const allSelected = allIds.length > 0 && allIds.every((id) => checked[id]);
-
   function toggleAll() {
     if (allSelected) setChecked({});
     else {
@@ -134,7 +155,7 @@ export default function ClientsTable({
           av = a.projects;
           bv = b.projects;
           break;
-        case "payments": // shown as “Earnings”
+        case "payments":
           av = a.payments;
           bv = b.payments;
           break;
@@ -158,7 +179,6 @@ export default function ClientsTable({
       return sort.dir === "asc" ? res : -res;
     });
   }
-
   function setSortKey(key: string) {
     setSort((s) =>
       s.key === key
@@ -167,20 +187,19 @@ export default function ClientsTable({
     );
   }
 
-  // ---- master clear filters ----
+  // master clear filters
   const hasFilters =
     (from && from.length > 0) ||
     (to && to.length > 0) ||
     selectedCharged.length > 0 ||
     selectedStatus.length > 0;
-
   function clearFilters() {
     const params = new URLSearchParams(search);
     ["from", "to", "charged", "status"].forEach((k) => params.delete(k));
     router.push(`${pathname}?${params.toString()}`);
   }
 
-  // Build chips for the indicator
+  // chips
   const filterChips: Array<{ label: string; value: string }> = [];
   if (from || to) {
     const d = `${from ? shortDate(from) : "—"} → ${to ? shortDate(to) : "—"}`;
@@ -204,55 +223,59 @@ export default function ClientsTable({
     });
   }
 
-  // options for the multi-selects
-  const chargedOptions = [
-    { value: "second", label: "Second" },
-    { value: "minute", label: "Minute" },
-    { value: "hour", label: "Hour" },
-    { value: "project", label: "Project" },
-  ];
-  const statusOptions = [
-    { value: "active", label: "Active" },
-    { value: "closed", label: "Closed" },
-    { value: "payment_expired", label: "Payment expired" },
-  ];
+  // motion
+  const rowVariants = {
+    initial: { opacity: 0, y: 4, scale: 0.995 },
+    animate: { opacity: 1, y: 0, scale: 1 },
+    exit: { opacity: 0, y: -4, scale: 0.995 },
+  };
 
-  return (
-    <div className="overflow-x-auto">
-      {/* Filters indicator bar */}
-      {hasFilters && (
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-neutral-50 px-3 py-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-neutral-700">
-              Filters active
+return (
+  // allow vertical overflow so header popovers aren’t clipped
+  <div className="relative overflow-x-auto overflow-y-visible">
+
+    {/* gradient masks – use dark variants so they don’t bleach the table */}
+    <div className="pointer-events-none absolute inset-x-0 top-0 h-2 bg-gradient-to-b from-white/70 dark:from-black/20 to-transparent" />
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2 bg-gradient-to-t from-white/70 dark:from-black/20 to-transparent" />
+
+    {/* Filters indicator bar */}
+    {hasFilters && (
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 dark:border-neutral-800 dark:bg-neutral-900/70">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+            Filters active
+          </span>
+          {filterChips.map((c) => (
+            <span
+              key={c.label}
+              className="inline-flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2 py-0.5 text-xs dark:border-neutral-800 dark:bg-neutral-900"
+              title={`${c.label}: ${c.value}`}
+            >
+              <span className="text-neutral-500 dark:text-neutral-400">{c.label}:</span>
+              <span className="font-medium dark:text-neutral-100">{c.value}</span>
             </span>
-            {filterChips.map((c) => (
-              <span
-                key={c.label}
-                className="inline-flex items-center gap-1 rounded-lg border bg-white px-2 py-0.5 text-xs"
-                title={`${c.label}: ${c.value}`}
-              >
-                <span className="text-neutral-500">{c.label}:</span>
-                <span className="font-medium">{c.value}</span>
-              </span>
-            ))}
-          </div>
-          <button
-            onClick={clearFilters}
-            className="rounded-lg border px-2 py-1 text-xs font-medium hover:bg-white"
-          >
-            Clear filters
-          </button>
+          ))}
         </div>
-      )}
+        <button
+          onClick={clearFilters}
+          className="rounded-lg border border-neutral-200 px-2 py-1 text-xs font-medium hover:bg-white dark:border-neutral-700 dark:hover:bg-neutral-900"
+        >
+          Clear filters
+        </button>
+      </div>
+    )}
 
-      <table className="w-full border-collapse text-sm">
-        <thead className="bg-neutral-50">
-          <tr className="border-b">
+    {/* min height so a single row doesn’t look “squeezed” */}
+    <div className="min-h-[550px]">
+      <table className="w-full border-collapse text-[13.5px] [--row-pad:0.70rem]">
+        {/* sticky header with proper dark surface */}
+        <thead className="sticky top-0 z-10 bg-neutral-50/90 backdrop-blur supports-[backdrop-filter]:bg-neutral-50/70 shadow-[inset_0_-1px_0_rgba(0,0,0,.06)] dark:bg-neutral-900/85 dark:supports-[backdrop-filter]:bg-neutral-900/70 dark:shadow-[inset_0_-1px_0_rgba(255,255,255,.06)]">
+          <tr className="border-b/0">
             {bulk && (
               <th className="w-[36px] px-3 py-2">
                 <input
                   type="checkbox"
+                  aria-label="Select all"
                   checked={allSelected}
                   onChange={toggleAll}
                 />
@@ -295,7 +318,12 @@ export default function ClientsTable({
                   label=""
                   param="charged"
                   selected={selectedCharged}
-                  options={chargedOptions}
+                  options={[
+                    { value: "second", label: "Second" },
+                    { value: "minute", label: "Minute" },
+                    { value: "hour", label: "Hour" },
+                    { value: "project", label: "Project" },
+                  ]}
                 />
               </div>
             </th>
@@ -310,16 +338,17 @@ export default function ClientsTable({
               />
             </th>
 
-            {/* Earnings (uses payments) */}
+            {/* Earnings */}
             <th className="px-3 py-2 text-right">
               <SortableHeader
                 label="Earnings"
-                active={sort.key === "payments"} // we sort by payments value
+                active={sort.key === "payments"}
                 dir={sort.dir}
                 onToggle={() => setSortKey("payments")}
               />
             </th>
 
+            {/* Dues */}
             <th className="px-3 py-2 text-right">
               <SortableHeader
                 label="Dues"
@@ -342,7 +371,11 @@ export default function ClientsTable({
                   label=""
                   param="status"
                   selected={selectedStatus}
-                  options={statusOptions}
+                  options={[
+                    { value: "active", label: "Active" },
+                    { value: "closed", label: "Closed" },
+                    { value: "payment_expired", label: "Payment expired" },
+                  ]}
                 />
               </div>
             </th>
@@ -361,77 +394,143 @@ export default function ClientsTable({
           </tr>
         </thead>
 
-        <tbody>
+        <motion.tbody layout transition={{ duration: 0.18 }}>
           {view.length === 0 ? (
             <tr>
               <td
-                className="px-3 py-6 text-center text-neutral-500"
+                className="px-3 py-16 text-center text-neutral-500 dark:text-neutral-400"
                 colSpan={bulk ? 10 : 9}
               >
                 No clients match the current filters.
               </td>
             </tr>
           ) : (
-            view.map((r) => (
-              <tr key={r.client.id} className="border-b">
-                {bulk && (
-                  <td className="px-3 py-2">
-                    <input
-                      type="checkbox"
-                      name="ids[]"
-                      value={r.client.id}
-                      checked={!!checked[r.client.id]}
-                      onChange={(e) =>
-                        setChecked((m) => ({
-                          ...m,
-                          [r.client.id]: e.target.checked,
-                        }))
-                      }
-                    />
-                  </td>
-                )}
+            <AnimatePresence initial={false}>
+              {view.map((r, i) => {
+                const isSelected = !!checked[r.client.id];
+                return (
+                  <motion.tr
+                    key={r.client.id}
+                    layout
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{
+                      type: "spring",
+                      stiffness: 240,
+                      damping: 22,
+                      mass: 0.9,
+                      delay: Math.min(i * 0.012, 0.1),
+                    }}
+                    className={cx(
+                      "border-b last:border-b-0 border-neutral-200 dark:border-neutral-800",
+                      "transition-colors",
+                      isSelected
+                        ? "bg-indigo-500/10 dark:bg-indigo-500/15"
+                        : "hover:bg-neutral-50/60 dark:hover:bg-white/5"
+                    )}
+                  >
+                    {bulk && (
+                      <td className="px-3 py-3">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${r.client.name}`}
+                          name="ids[]"
+                          value={r.client.id}
+                          checked={isSelected}
+                          onChange={(e) =>
+                            setChecked((m) => ({
+                              ...m,
+                              [r.client.id]: e.target.checked,
+                            }))
+                          }
+                        />
+                      </td>
+                    )}
 
-                {/* Date */}
-                <td className="px-3 py-2">
-                  {shortDate(r.lastDate ?? r.client.created_at)}
-                </td>
+                    {/* Date */}
+                    <td className="px-3 py-3 text-neutral-800 dark:text-neutral-200">
+                      {shortDate(r.lastDate ?? r.client.created_at)}
+                    </td>
 
-                <td className="px-3 py-2">{r.client.name}</td>
-                <td className="px-3 py-2 capitalize">{r.client.charged_by}</td>
-                <td className="px-3 py-2 text-right">{r.projects}</td>
+                    {/* Client name */}
+                    <td className="px-3 py-3 font-medium text-neutral-900 dark:text-neutral-100">
+                      {r.client.name}
+                    </td>
 
-                {/* Earnings (payments) */}
-                <td className="px-3 py-2 text-right">{money(r.payments)}</td>
+                    {/* Charged badge */}
+                    <td className="px-3 py-3">
+                      <span
+                        className={cx(
+                          "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize",
+                          chargedClass[r.client.charged_by]
+                        )}
+                      >
+                        {r.client.charged_by}
+                      </span>
+                    </td>
 
-                <td className="px-3 py-2 text-right">
-                  {r.dues > 0 ? money(r.dues) : "—"}
-                </td>
-                <td className="px-3 py-2 capitalize">
-                  {r.client.status.replace("_", " ")}
-                </td>
-                <td className="px-3 py-2 text-right">{r.activeDays}</td>
+                    <td className="px-3 py-3 text-right text-neutral-800 dark:text-neutral-200">
+                      {r.projects}
+                    </td>
 
-                <td className="px-3 py-2">
-                  <div className="flex items-center gap-3">
-                    <Link
-                      href={`/clients/${r.client.id}`}
-                      className="text-blue-600"
-                    >
-                      View
-                    </Link>
-                    <Link
-                      href={`/clients/${r.client.id}/edit-client`}
-                      className="text-blue-600"
-                    >
-                      Edit
-                    </Link>
-                  </div>
-                </td>
-              </tr>
-            ))
+                    {/* Earnings (payments) */}
+                    <td className="px-3 py-3 text-right font-medium text-neutral-900 dark:text-neutral-100">
+                      {money(r.payments)}
+                    </td>
+
+                    <td className="px-3 py-3 text-right">
+                      {r.dues > 0 ? (
+                        <span className="font-medium text-rose-600 dark:text-rose-400">
+                          {money(r.dues)}
+                        </span>
+                      ) : (
+                        <span className="text-neutral-500 dark:text-neutral-400">—</span>
+                      )}
+                    </td>
+
+                    {/* Status badge */}
+                    <td className="px-3 py-3">
+                      <span
+                        className={cx(
+                          "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize",
+                          statusClass[r.client.status]
+                        )}
+                      >
+                        {r.client.status.replace("_", " ")}
+                      </span>
+                    </td>
+
+                    <td className="px-3 py-3 text-right text-neutral-800 dark:text-neutral-200">
+                      {r.activeDays}
+                    </td>
+
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/clients/${r.client.id}`}
+                          className="rounded-lg px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10"
+                        >
+                          View
+                        </Link>
+                        <Link
+                          href={`/clients/${r.client.id}/edit-client`}
+                          className="rounded-lg px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10"
+                        >
+                          Edit
+                        </Link>
+                      </div>
+                    </td>
+                  </motion.tr>
+                );
+              })}
+            </AnimatePresence>
           )}
-        </tbody>
+        </motion.tbody>
       </table>
     </div>
-  );
+  </div>
+);
+
+
 }

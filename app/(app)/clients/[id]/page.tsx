@@ -31,7 +31,6 @@ type WorkRow = {
 };
 
 type PaymentRow = { amount: number | string };
-
 type ActiveDaysRow = { active_days: number };
 
 /* ---------- helpers ---------- */
@@ -71,24 +70,26 @@ export default async function ClientDetailPage({
   if (clientErr || !client) {
     return (
       <main className="w-full px-6 xl:px-10 py-10">
-        <Link href="/clients" className="text-blue-600">
+        <Link
+          href="/clients"
+          className="inline-flex items-center rounded-xl border border-neutral-200 px-3 py-1.5 text-sm hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
+        >
           ← Back to clients
         </Link>
-        <pre className="mt-4 rounded-xl bg-red-50 p-4 text-red-700">
+        <pre className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
           {clientErr?.message ?? "Client not found"}
         </pre>
       </main>
     );
   }
 
-  // --- fetch stats (compute in app where needed)
+  // --- fetch stats
   const [{ data: works }, { data: pays }, { data: adRow }] = await Promise.all([
     supabase
       .from("work_entries")
       .select("amount_due,status,delivered_at")
       .eq("client_id", id),
     supabase.from("payment_entries").select("amount").eq("client_id", id),
-    // Active days from the VIEW you created:
     supabase
       .from("v_client_active_days")
       .select("active_days")
@@ -98,54 +99,48 @@ export default async function ClientDetailPage({
 
   const workList = (works ?? []) as WorkRow[];
 
-  // delivered-only totals for “projects” & dues math
   const delivered = workList.filter((w) => w.status === "delivered");
-  const deliveredSum = delivered.reduce(
-    (s, r) => s + Number(r.amount_due || 0),
-    0
-  );
+  const deliveredSum = delivered.reduce((s, r) => s + Number(r.amount_due || 0), 0);
   const totalProjects = delivered.length;
 
-  // payments = earnings
   const totalPayments = (pays ?? []).reduce(
     (s, r) => s + Number((r as PaymentRow).amount || 0),
     0
   );
   const recognizedEarnings = totalPayments;
 
-  // dues
   const totalDues = Math.max(0, deliveredSum - totalPayments);
-
-  // Active Days from the view (fallback to 0 if no row yet)
   const activeDays = Number(adRow?.active_days ?? 0);
 
   return (
-    <main className="w-full px-6 xl:px-10 py-10 space-y-10">
+    <main className="relative w-full space-y-10 px-6 py-10 xl:px-10">
+      {/* page background accent - theme aware */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-indigo-50/40 to-transparent dark:from-zinc-800/60" />
+
       {/* Header row */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="relative flex flex-wrap items-center justify-between gap-4">
         <div className="space-y-2">
-          <h1 className="text-2xl font-semibold">{client.name}</h1>
-          <div className="flex flex-wrap gap-2 text-sm">
-            <span className="rounded-full border px-3 py-1 capitalize">
-              {client.charged_by}
-            </span>
-            <span className="rounded-full border px-3 py-1">
-              Rate: {money(client.rate)}
-            </span>
-            <span className="rounded-full border px-3 py-1 capitalize">
-              {client.status.replace("_", " ")}
-            </span>
+          <h1 className="text-2xl font-semibold tracking-tight dark:text-neutral-100">
+            {client.name}
+          </h1>
+          <div className="flex flex-wrap gap-2 text-[13px]">
+            <Badge>{client.charged_by}</Badge>
+            <Badge>Rate: {money(client.rate)}</Badge>
+            <StatusBadge status={client.status} />
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Link href="/clients" className="rounded-xl border px-3 py-1.5">
+          <Link
+            href="/clients"
+            className="inline-flex items-center rounded-xl border border-neutral-200 px-3 py-1.5 text-sm hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-200 dark:hover:bg-neutral-900"
+          >
             Back
           </Link>
         </div>
       </div>
 
-      {/* KPI cards (4 cards: Projects, Earnings (payments), Dues, Active Days) */}
+      {/* KPI cards */}
       <section className="grid grid-cols-12 gap-6">
         <Card
           className="col-span-12 sm:col-span-6 lg:col-span-3 xl:col-span-2"
@@ -155,7 +150,7 @@ export default async function ClientDetailPage({
         <Card
           className="col-span-12 sm:col-span-6 lg:col-span-3 xl:col-span-2"
           label="Total Earnings"
-          value={money(recognizedEarnings)} // payments == earnings
+          value={money(recognizedEarnings)}
         />
         <Card
           className="col-span-12 sm:col-span-6 lg:col-span-3 xl:col-span-2"
@@ -171,14 +166,14 @@ export default async function ClientDetailPage({
 
       {/* Client info panel + inline edit button */}
       <Panel title="Client info" right={<EditClientDialog client={client} />}>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+        <div className="grid grid-cols-1 gap-4 text-[13.5px] md:grid-cols-2">
           <InfoRow label="Contact name" value={client.contact_name || "—"} />
           <InfoRow label="Designation" value={client.designation || "—"} />
           <InfoRow
             label="Email"
             value={
               client.email ? (
-                <a className="text-blue-600" href={`mailto:${client.email}`}>
+                <a className="text-blue-600 dark:text-blue-400" href={`mailto:${client.email}`}>
                   {client.email}
                 </a>
               ) : (
@@ -190,7 +185,7 @@ export default async function ClientDetailPage({
             label="Phone"
             value={
               client.phone ? (
-                <a className="text-blue-600" href={`tel:${client.phone}`}>
+                <a className="text-blue-600 dark:text-blue-400" href={`tel:${client.phone}`}>
                   {client.phone}
                 </a>
               ) : (
@@ -199,8 +194,8 @@ export default async function ClientDetailPage({
             }
           />
           <div className="md:col-span-2">
-            <div className="text-xs text-neutral-500 mb-1">Note</div>
-            <div className="rounded-xl border bg-neutral-50 px-3 py-2">
+            <div className="mb-1 text-xs text-neutral-500 dark:text-neutral-400">Note</div>
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-200">
               {client.note?.trim() || "—"}
             </div>
           </div>
@@ -208,8 +203,9 @@ export default async function ClientDetailPage({
       </Panel>
 
       {/* Tables */}
-      <section className="grid grid-cols-12 gap-8">
-        <Panel className="col-span-12 xl:col-span-7" title="Work entries">
+      <section className="grid grid-cols-12 gap-8 items-start">
+        {/* Work gets more width */}
+        <Panel className="col-span-12 xl:col-span-8 2xl:col-span-9" title="Work entries">
           <div className="mb-3">
             <WorkFilters current={filters} />
           </div>
@@ -228,7 +224,8 @@ export default async function ClientDetailPage({
           </div>
         </Panel>
 
-        <Panel className="col-span-12 xl:col-span-5" title="Payments">
+        {/* Payments stays compact */}
+        <Panel className="col-span-12 xl:col-span-4 2xl:col-span-3" title="Payments">
           <div className="overflow-x-auto">
             <PaymentsTable
               clientId={client.id}
@@ -243,6 +240,33 @@ export default async function ClientDetailPage({
 
 /* ------- tiny UI bits ------- */
 
+function Badge({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded-full border border-neutral-200 bg-white/70 px-3 py-1 capitalize text-neutral-700 backdrop-blur-sm dark:border-neutral-800 dark:bg-neutral-950/70 dark:text-neutral-300">
+      {children}
+    </span>
+  );
+}
+
+function StatusBadge({ status }: { status: Client["status"] }) {
+  const map: Record<Client["status"], string> = {
+    active:
+      "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-900/40",
+    closed:
+      "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900/30 dark:text-slate-300 dark:border-slate-800",
+    payment_expired:
+      "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-900/40",
+  };
+  return (
+    <span
+      className={`rounded-full border px-3 py-1 capitalize ${map[status]}`}
+      title={status.replace("_", " ")}
+    >
+      {status.replace("_", " ")}
+    </span>
+  );
+}
+
 function Card({
   label,
   value,
@@ -253,9 +277,13 @@ function Card({
   className?: string;
 }) {
   return (
-    <div className={`rounded-2xl border bg-white p-5 shadow-sm ${className}`}>
-      <div className="text-sm text-neutral-500">{label}</div>
-      <div className="mt-1 text-xl font-semibold">{value}</div>
+    <div
+      className={`rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-950 ${className}`}
+    >
+      <div className="text-sm text-neutral-500 dark:text-neutral-400">{label}</div>
+      <div className="mt-1 text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+        {value}
+      </div>
     </div>
   );
 }
@@ -272,21 +300,25 @@ function Panel({
   right?: React.ReactNode;
 }) {
   return (
-    <div className={`w-full rounded-2xl border bg-white/95 shadow-sm ${className}`}>
-      <div className="flex items-center justify-between border-b px-5 py-4">
-        <h3 className="text-base font-medium">{title}</h3>
+    <div
+      className={`w-full rounded-2xl border border-neutral-200 bg-white/95 shadow-sm backdrop-blur-sm dark:border-neutral-800 dark:bg-neutral-950/80 ${className}`}
+    >
+      <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-4 dark:border-neutral-800">
+        <h3 className="text-base font-medium text-neutral-900 dark:text-neutral-100">
+          {title}
+        </h3>
         {right ? <div className="shrink-0">{right}</div> : null}
       </div>
-      <div className="p-5">{children}</div>
+      <div className="p-5 text-neutral-900 dark:text-neutral-200">{children}</div>
     </div>
   );
 }
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="rounded-xl border px-3 py-2">
-      <div className="text-xs text-neutral-500">{label}</div>
-      <div className="mt-0.5">{value}</div>
+    <div className="rounded-xl border border-neutral-200 px-3 py-2 dark:border-neutral-800">
+      <div className="text-xs text-neutral-500 dark:text-neutral-400">{label}</div>
+      <div className="mt-0.5 text-neutral-900 dark:text-neutral-200">{value}</div>
     </div>
   );
 }
