@@ -1,4 +1,3 @@
-// app/(app)/clients/[id]/page.tsx
 import React from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -9,6 +8,7 @@ import AddPayment from "./add-payment";
 import AddWork from "./add-work";
 import WorkFilters, { WorkFiltersState } from "./work-filters";
 import EditClientDialog from "./EditClientDialog";
+import EditVariantsDialog from "./EditVariantsDialog";
 
 /* ---------- types ---------- */
 type Client = {
@@ -119,8 +119,8 @@ export default async function ClientDetailPage({
 
       {/* Header row */}
       <div className="relative flex flex-wrap items-center justify-between gap-4">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-semibold tracking-tight dark:text-neutral-100">
+        <div className="min-w-0 space-y-2">
+          <h1 className="truncate text-2xl font-semibold tracking-tight dark:text-neutral-100">
             {client.name}
           </h1>
           <div className="flex flex-wrap gap-2 text-[13px]">
@@ -203,34 +203,47 @@ export default async function ClientDetailPage({
       </Panel>
 
       {/* Tables */}
-      <section className="grid grid-cols-12 gap-8 items-start">
+      <section className="grid grid-cols-12 items-start gap-8">
         {/* Work gets more width */}
-        <Panel className="col-span-12 xl:col-span-8 2xl:col-span-9" title="Work entries">
-          <div className="mb-3">
-            <WorkFilters current={filters} />
-          </div>
-          <div className="overflow-x-auto">
-            <WorkTable
-              clientId={client.id}
-              filters={filters}
-              right={
+        <Panel
+          className="col-span-12 xl:col-span-8 2xl:col-span-9"
+          title="Work entries"
+          right={
+            <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+              {/* Outline / neutral look for Edit variants */}
+              <div className="[&_button]:!h-9 [&_button]:!rounded-xl [&_button]:!border-neutral-300 [&_button]:!bg-white [&_button]:!text-neutral-900 dark:[&_button]:!bg-neutral-900 dark:[&_button]:!text-neutral-100">
+                <EditVariantsDialog clientId={client.id} />
+              </div>
+
+              {/* Primary emphasis for Add entry */}
+              <div className="[&_button]:!h-9 [&_button]:!rounded-xl [&_button]:!bg-indigo-600 [&_button]:!text-white [&_button:hover]:!bg-indigo-700 [&_button]:!border-transparent [&_button]:shadow-sm">
                 <AddWork
                   clientId={client.id}
                   defaultBasis={client.charged_by}
                   defaultRate={client.rate}
                 />
-              }
-            />
+              </div>
+            </div>
+          }
+        >
+          <div className="mb-3">
+            <WorkFilters current={filters} />
+          </div>
+
+          {/* ⬇️ No 'right' prop here anymore — avoids duplicate buttons */}
+          <div className="overflow-x-auto">
+            <WorkTable clientId={client.id} filters={filters} />
           </div>
         </Panel>
 
         {/* Payments stays compact */}
-        <Panel className="col-span-12 xl:col-span-4 2xl:col-span-3" title="Payments">
+        <Panel
+          className="col-span-12 xl:col-span-4 2xl:col-span-3"
+          title="Payments"
+          right={<AddPayment clientId={client.id} />}
+        >
           <div className="overflow-x-auto">
-            <PaymentsTable
-              clientId={client.id}
-              right={<AddPayment clientId={client.id} />}
-            />
+            <PaymentsTable clientId={client.id} />
           </div>
         </Panel>
       </section>
@@ -288,6 +301,7 @@ function Card({
   );
 }
 
+/** Responsive panel header */
 function Panel({
   title,
   children,
@@ -303,11 +317,17 @@ function Panel({
     <div
       className={`w-full rounded-2xl border border-neutral-200 bg-white/95 shadow-sm backdrop-blur-sm dark:border-neutral-800 dark:bg-neutral-950/80 ${className}`}
     >
-      <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-4 dark:border-neutral-800">
-        <h3 className="text-base font-medium text-neutral-900 dark:text-neutral-100">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 px-5 py-3 dark:border-neutral-800">
+        <h3 className="min-w-0 flex-1 truncate text-base font-medium text-neutral-900 dark:text-neutral-100">
           {title}
         </h3>
-        {right ? <div className="shrink-0">{right}</div> : null}
+        {right ? (
+          <div className="w-full shrink-0 sm:w-auto">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {right}
+            </div>
+          </div>
+        ) : null}
       </div>
       <div className="p-5 text-neutral-900 dark:text-neutral-200">{children}</div>
     </div>
