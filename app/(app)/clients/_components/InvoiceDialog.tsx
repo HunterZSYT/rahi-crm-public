@@ -352,7 +352,7 @@ export default function InvoiceDialog() {
         maxWidth: textMaxW,
       });
 
-      // Bill To (start a little after From)
+      // Bill To
       const billStartY = fromBottom + 14;
       const cl = clients.find((c) => c.id === clientId)!;
       const billToLines = [
@@ -372,7 +372,7 @@ export default function InvoiceDialog() {
         maxWidth: textMaxW,
       });
 
-      // Balance Due chip (align under meta or beside Bill To, whichever is lower)
+      // Balance Due chip
       const balanceY = Math.max(metaY + metaH + 10, billStartY - 8);
       const balanceH = 34;
       doc.roundedRect(pageW - marginX - metaW, balanceY, metaW, balanceH, 8, 8);
@@ -389,7 +389,7 @@ export default function InvoiceDialog() {
       let yRight = topOfColumns;
 
       // ---------- Shared table theme ----------
-      const brandFoot = [16, 153, 127] as [number, number, number]; // teal-ish
+      const brandFoot = [16, 153, 127] as [number, number, number];
       const tableTheme = {
         styles: {
           font: "HindSiliguri",
@@ -417,10 +417,62 @@ export default function InvoiceDialog() {
         theme: "grid" as const,
       };
 
-      /* ---------------- Project Based (left column) ---------------- */
+      // ====== COMPUTE GROUPS & TOTALS UP FRONT ======
       const projectRows = selectedRows.filter((w) => w.charged_by_snapshot === "project");
       const projectAmount = projectRows.reduce((s, w) => s + Number(w.amount_due || 0), 0);
 
+      const timeRows = selectedRows.filter((w) => w.charged_by_snapshot !== "project");
+      const timeAmount = timeRows.reduce((s, w) => s + Number(w.amount_due || 0), 0);
+      const timeSeconds = timeRows.reduce((s, w) => s + clamp(w.duration_seconds || 0), 0);
+
+      // ====== PIN RIGHT SIDEBAR ON PAGE 1 (draw before left column) ======
+      const drawRightTable = (
+        title: string,
+        headCols: number,
+        rows: RowInput[],
+        colWidths: number[]
+      ) => {
+        yRight = ensureSpace(doc, 60 + rows.length * 16, yRight, marginTop, marginBottom);
+        const head: RowInput[] = [[{ content: title, colSpan: headCols } as any]];
+        const colStyles: Record<number, any> = {};
+        colWidths.forEach((w, i) => (colStyles[i] = { cellWidth: w }));
+        autoTable(doc, {
+          ...tableTheme,
+          margin: { left: pageW - marginX - sidebarW, right: marginX },
+          startY: yRight,
+          tableWidth: sidebarW,
+          head,
+          body: rows,
+          columnStyles: colStyles,
+        });
+        // @ts-ignore
+        yRight = doc.lastAutoTable.finalY + 8;
+      };
+
+      // Draw right column now (on page 1)
+      drawRightTable(
+        "Total",
+        3,
+        [
+          ["Project Based", String(projectRows.length), BDT(projectAmount)],
+          ["Total Min", minSecLabel(timeSeconds), BDT(timeAmount)],
+        ],
+        [96, 52, sidebarW - (96 + 52) - 2]
+      );
+      drawRightTable("Total Due", 2, [["Amount", BDT(totalDue)]], [96, sidebarW - 96 - 2]);
+      const payRows: RowInput[] =
+        payments.length > 0
+          ? payments
+              .slice()
+              .sort((a, b) => (a.date < b.date ? -1 : 1))
+              .map((p) => [fmtDateLong(p.date), `${BDT(p.amount)}  ${String(p.medium || "").toLowerCase()}`])
+          : [["—", ""]];
+      drawRightTable("Payment History", 2, payRows, [96, sidebarW - 96 - 2]);
+
+      // Make sure we resume drawing the left column on page 1.
+      doc.setPage(1);
+
+      /* ---------------- Project Based (left column) ---------------- */
       if (projectRows.length) {
         doc.setFont("HindSiliguri", "bold").setFontSize(11);
         yLeft = ensureSpace(doc, 18, yLeft, marginTop, marginBottom);
@@ -453,7 +505,6 @@ export default function InvoiceDialog() {
             3: { cellWidth: pAmtW, halign: "right" },
           },
           willDrawCell: (data) => {
-            // automatic page-break protection for the table block
             if (data.row.index === 0 && data.row.section === "body") {
               yLeft = ensureSpace(doc, 80, yLeft, marginTop, marginBottom);
             }
@@ -464,9 +515,6 @@ export default function InvoiceDialog() {
       }
 
       /* ------------- Per-Min grouped tables (left column) ------------- */
-      const timeRows = selectedRows.filter((w) => w.charged_by_snapshot !== "project");
-      const timeAmount = timeRows.reduce((s, w) => s + Number(w.amount_due || 0), 0);
-
       if (timeRows.length) {
         const byRate = new Map<number, Work[]>();
         for (const w of timeRows) {
@@ -521,56 +569,10 @@ export default function InvoiceDialog() {
         }
       }
 
-      /* ----------------- Sidebar summary tables (RIGHT) ----------------- */
-      const drawRightTable = (
-        title: string,
-        headCols: number,
-        rows: RowInput[],
-        colWidths: number[]
-      ) => {
-        yRight = ensureSpace(doc, 60 + rows.length * 16, yRight, marginTop, marginBottom);
-        const head: RowInput[] = [[{ content: title, colSpan: headCols } as any]];
-        const colStyles: Record<number, any> = {};
-        colWidths.forEach((w, i) => (colStyles[i] = { cellWidth: w }));
-        autoTable(doc, {
-          ...tableTheme,
-          margin: { left: pageW - marginX - sidebarW, right: marginX },
-          startY: yRight,
-          tableWidth: sidebarW,
-          head,
-          body: rows,
-          columnStyles: colStyles,
-        });
-        // @ts-ignore
-        yRight = doc.lastAutoTable.finalY + 8;
-      };
-
-      const projectCount = projectRows.length;
-      const timeSeconds = timeRows.reduce((s, w) => s + clamp(w.duration_seconds || 0), 0);
-
-      drawRightTable(
-        "Total",
-        3,
-        [
-          ["Project Based", String(projectCount), BDT(projectAmount)],
-          ["Total Min", minSecLabel(timeSeconds), BDT(timeAmount)],
-        ],
-        [96, 52, sidebarW - (96 + 52) - 2]
-      );
-
-      drawRightTable("Total Due", 2, [["Amount", BDT(totalDue)]], [96, sidebarW - 96 - 2]);
-
-      const payRows: RowInput[] =
-        payments.length > 0
-          ? payments
-              .slice()
-              .sort((a, b) => (a.date < b.date ? -1 : 1))
-              .map((p) => [fmtDateLong(p.date), `${BDT(p.amount)}  ${String(p.medium || "").toLowerCase()}`])
-          : [["—", ""]];
-      drawRightTable("Payment History", 2, payRows, [96, sidebarW - 96 - 2]);
-
-      // Advance below the taller column
+      // Advance below the taller column (footer start on the last page used)
       y = Math.max(yLeft, yRight) + sectionGap;
+      // If the right column caused a new page earlier, jump to the last page now
+      doc.setPage(doc.getNumberOfPages());
 
       // Footer: payment instructions (auto page-break safe)
       y = ensureSpace(doc, 70, y, marginTop, marginBottom);
