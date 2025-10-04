@@ -2,7 +2,6 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Calendar, RotateCcw } from "lucide-react";
 
-
 import Panel from "./_components/Panel";
 import StatCard from "./_components/StatCard";
 import MiniTable from "./_components/MiniTable";
@@ -12,7 +11,6 @@ import ClientsToolbar from "./_components/ClientsToolbar";
 import { arrParam, keepParams, money } from "./_lib/table";
 import { getGlobalTotals } from "@/app/(app)/_lib/stats";
 
-// ---- NEW animated helpers ----
 import AnimatedDetails from "./_components/AnimatedDetails";
 import MotionFade from "./_components/MotionFade";
 
@@ -28,7 +26,7 @@ type Client = {
   email: string | null;
   phone: string | null;
   note: string | null;
-  created_at: string; // fallback for table date filters
+  created_at: string;
 };
 type Work = {
   client_id: string;
@@ -177,9 +175,8 @@ export default async function DashboardPage({
   );
   const globalProjects = deliveredRange.length;
 
-  // Payments are treated as earnings; dues computed separately
   const {
-    totalPayments: globalPayments, // = earnings
+    totalPayments: globalPayments,
     totalDues: globalDues,
   } = await getGlobalTotals({ start, end });
 
@@ -216,16 +213,14 @@ export default async function DashboardPage({
     byClientRange.set(id, agg);
   }
 
-  /* ---------- Build table rows (server; used by ClientsTable) ---------- */
+  /* ---------- Build table rows ---------- */
   let rows: Row[] = clientList.map((c) => {
     const agg = lifetime.get(c.id);
     const deliveredSum = agg?.deliveredSum ?? 0;
     const payments = agg?.payments ?? 0;
     const dues = Math.max(0, deliveredSum - payments);
-    const earnings = Math.max(0, payments - dues); // keep existing table logic
+    const earnings = Math.max(0, payments - dues);
     const lastDate = agg?.maxDelivered ?? null;
-
-    // Active days from view (unique work dates)
     const activeDays = activeDaysMap.get(c.id) ?? 0;
 
     return {
@@ -245,7 +240,6 @@ export default async function DashboardPage({
     };
   });
 
-  // filter on first paint (with delivered fallback to created_at)
   if (q) rows = rows.filter((r) => r.client.name.toLowerCase().includes(q));
   if (from)
     rows = rows.filter((r) => {
@@ -271,27 +265,32 @@ export default async function DashboardPage({
     "bulk",
   ];
 
-return (
-  <main className="w-full px-6 xl:px-10 py-10 space-y-8 relative">
-    {/* page background accent */}
-    <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-indigo-50/40 to-transparent dark:from-indigo-900/15" />
+  const clearHref = keepParams(sp, persistKeys, {
+    start: undefined,
+    end: undefined,
+  });
 
-    {/* ---------- Analytics (collapsible, animated) ---------- */}
-    <AnimatedDetails
-      defaultOpen={false}
-      className="relative"
-      title={<span>Welcome Rahi! Here’s your analytics at a glance</span>}
-      right={<span className="text-neutral-500 dark:text-neutral-400">Toggle</span>}
-    >
-      {/* Date toolbar */}
-      <MotionFade y={10}>
-        <form
-          method="get"
-          className="mb-4 flex flex-wrap items-end gap-3 rounded-2xl border border-neutral-200 bg-white/85 p-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/75"
-        >
-          <div className="flex items-end gap-3">
-            {/* start */}
-            <div>
+  return (
+    <main className="relative w-full space-y-6 px-3 py-6 sm:space-y-8 sm:px-6 sm:py-10 xl:px-10">
+      {/* page background accent */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-indigo-50/40 to-transparent dark:from-indigo-900/15" />
+
+      {/* ---------- Analytics (collapsible) ---------- */}
+      <AnimatedDetails
+        defaultOpen={false}
+        className="relative"
+        title={<span>Welcome Rahi! Here’s your analytics at a glance</span>}
+        right={<span className="text-neutral-500 dark:text-neutral-400">Toggle</span>}
+      >
+        {/* Responsive date toolbar (GET form) */}
+        <MotionFade y={10}>
+          <form
+            method="get"
+            className="mb-4 grid grid-cols-1 items-end gap-3 rounded-2xl border border-neutral-200 bg-white/85 p-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/75
+                       sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]"
+          >
+            {/* Start */}
+            <div className="min-w-0">
               <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">
                 Start date
               </label>
@@ -303,13 +302,13 @@ return (
                   type="date"
                   name="start"
                   defaultValue={start ?? ""}
-                  className="w-[180px] rounded-xl border border-neutral-300 bg-white p-2 pl-8 text-neutral-900 outline-none focus:ring dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+                  className="w-full rounded-xl border border-neutral-300 bg-white p-2 pl-8 text-neutral-900 outline-none focus:ring dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
                 />
               </div>
             </div>
 
-            {/* end */}
-            <div>
+            {/* End */}
+            <div className="min-w-0">
               <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">
                 End date
               </label>
@@ -321,126 +320,147 @@ return (
                   type="date"
                   name="end"
                   defaultValue={end ?? ""}
-                  className="w-[180px] rounded-xl border border-neutral-300 bg-white p-2 pl-8 text-neutral-900 outline-none focus:ring dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+                  className="w-full rounded-xl border border-neutral-300 bg-white p-2 pl-8 text-neutral-900 outline-none focus:ring dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
                 />
               </div>
             </div>
 
-            {/* actions */}
-            <div className="flex items-center gap-2 pb-[2px]">
+            {/* Apply */}
+            <div className="flex gap-2 sm:pb-[2px]">
               <button
                 type="submit"
-                className="h-[40px] rounded-xl border border-neutral-300 bg-white px-3 text-sm font-medium transition-[transform,opacity] hover:opacity-90 active:scale-[.98] dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+                className="h-10 w-full rounded-xl border border-neutral-300 bg-white px-4 text-sm font-medium transition-[transform,opacity] hover:opacity-90 active:scale-[.98] dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 sm:w-auto"
               >
                 Apply
               </button>
+
               {(start || end) && (
                 <Link
-                  href={keepParams(sp, persistKeys, { start: undefined, end: undefined })}
-                  className="inline-flex h-[40px] items-center gap-2 rounded-xl border border-neutral-300 bg-white px-3 text-sm font-medium transition-[transform,opacity] hover:opacity-90 active:scale-[.98] dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+                  href={clearHref}
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-neutral-300 bg-white px-4 text-sm font-medium transition-[transform,opacity] hover:opacity-90 active:scale-[.98] dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
                 >
                   <RotateCcw size={16} />
                   Clear
                 </Link>
               )}
             </div>
-          </div>
-        </form>
-      </MotionFade>
-
-      {/* KPI grid */}
-      <section className="grid grid-cols-12 gap-4">
-        <MotionFade delay={0.02} className="col-span-12 md:col-span-3">
-          <StatCard
-            label="Global Total Projects"
-            value={`${globalProjects}`}
-            sub={[
-              { label: "Delivered", value: String(globalProjects) },
-              { label: "Processing", value: String(processingRange.length) },
-            ]}
-          />
+          </form>
         </MotionFade>
 
-        <MotionFade delay={0.04} className="col-span-12 md:col-span-3">
-          <StatCard label="Global Total Earnings" value={money(globalPayments)} />
-        </MotionFade>
-
-        <MotionFade delay={0.06} className="col-span-12 md:col-span-3">
-          <StatCard label="Global Total Dues" value={globalDues > 0 ? money(globalDues) : "—"} />
-        </MotionFade>
-
-        {/* Status panel */}
-        <MotionFade delay={0.08} className="col-span-12 md:col-span-3">
-          <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-            <div className="text-xs text-neutral-500 dark:text-neutral-400">Global Client Status</div>
-            <ul className="mt-2 space-y-1 text-sm">
-              <li className="flex items-center justify-between">
-                <span className="dark:text-neutral-200">Active</span>
-                <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-400/20">
-                  {statuses.active}
-                </span>
-              </li>
-              <li className="flex items-center justify-between">
-                <span className="dark:text-neutral-200">Closed</span>
-                <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-slate-500/15 dark:text-slate-300 dark:ring-slate-400/20">
-                  {statuses.closed}
-                </span>
-              </li>
-              <li className="flex items-center justify-between">
-                <span className="dark:text-neutral-200">Payment expired</span>
-                <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-400/20">
-                  {statuses.payment_expired}
-                </span>
-              </li>
-            </ul>
-          </div>
-        </MotionFade>
-      </section>
-
-      {/* Top lists */}
-      <section className="mt-4 grid grid-cols-12 gap-4">
-        <MotionFade delay={0.1} className="col-span-12 lg:col-span-6">
-          <Panel title="Top 5 High Paying Clients">
-            <MiniTable
-              headers={["Client", "Payments"]}
-              rows={[...byClientRange.values()]
-                .sort((a, b) => b.payments - a.payments)
-                .slice(0, 5)
-                .map((r) => [r.name, money(r.payments)])}
-              empty="No data"
-              rightAlign={[1]}
+        {/* KPI grid */}
+        <section className="grid grid-cols-12 gap-3 sm:gap-4">
+          <MotionFade delay={0.02} className="col-span-12 md:col-span-3">
+            <StatCard
+              label="Global Total Projects"
+              value={`${globalProjects}`}
+              sub={[
+                { label: "Delivered", value: String(globalProjects) },
+                { label: "Processing", value: String(processingRange.length) },
+              ]}
             />
-          </Panel>
-        </MotionFade>
+          </MotionFade>
 
-        <MotionFade delay={0.12} className="col-span-12 lg:col-span-6">
-          <Panel title="Top 5 Due Clients">
-            <MiniTable
-              headers={["Client", "Due"]}
-              rows={[...byClientRange.values()]
-                .sort((a, b) => b.dues - a.dues)
-                .slice(0, 5)
-                .map((r) => [r.name, money(r.dues)])}
-              empty="No data"
-              rightAlign={[1]}
-            />
-          </Panel>
-        </MotionFade>
-      </section>
-    </AnimatedDetails>
+          <MotionFade delay={0.04} className="col-span-12 md:col-span-3">
+            <StatCard label="Global Total Earnings" value={money(globalPayments)} />
+          </MotionFade>
 
-    {/* ---------- Clients table (lifetime) ---------- */}
-    <Panel title="Clients" className="w-full" right={<ClientsToolbar />}>
-      {bulk ? (
-        <form method="post" action="/api/clients/bulk-delete">
-          <div className="mb-3">
-            <button
-              type="submit"
-              className="rounded-xl bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-[transform,opacity] hover:opacity-90 active:scale-[.98]"
-            >
-              Delete selected
-            </button>
-          </div>
+          <MotionFade delay={0.06} className="col-span-12 md:col-span-3">
+            <StatCard label="Global Total Dues" value={globalDues > 0 ? money(globalDues) : "—"} />
+          </MotionFade>
+
+          <MotionFade delay={0.08} className="col-span-12 md:col-span-3">
+            <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="text-xs text-neutral-500 dark:text-neutral-400">Global Client Status</div>
+              <ul className="mt-2 space-y-1 text-sm">
+                <li className="flex items-center justify-between">
+                  <span className="dark:text-neutral-200">Active</span>
+                  <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-400/20">
+                    {statuses.active}
+                  </span>
+                </li>
+                <li className="flex items-center justify-between">
+                  <span className="dark:text-neutral-200">Closed</span>
+                  <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-slate-500/15 dark:text-slate-300 dark:ring-slate-400/20">
+                    {statuses.closed}
+                  </span>
+                </li>
+                <li className="flex items-center justify-between">
+                  <span className="dark:text-neutral-200">Payment expired</span>
+                  <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-400/20">
+                    {statuses.payment_expired}
+                  </span>
+                </li>
+              </ul>
+            </div>
+          </MotionFade>
+        </section>
+
+        {/* Top lists */}
+        <section className="mt-4 grid grid-cols-12 gap-3 sm:gap-4">
+          <MotionFade delay={0.1} className="col-span-12 lg:col-span-6">
+            <Panel title="Top 5 High Paying Clients">
+              <MiniTable
+                headers={["Client", "Payments"]}
+                rows={[...byClientRange.values()]
+                  .sort((a, b) => b.payments - a.payments)
+                  .slice(0, 5)
+                  .map((r) => [r.name, money(r.payments)])}
+                empty="No data"
+                rightAlign={[1]}
+              />
+            </Panel>
+          </MotionFade>
+
+          <MotionFade delay={0.12} className="col-span-12 lg:col-span-6">
+            <Panel title="Top 5 Due Clients">
+              <MiniTable
+                headers={["Client", "Due"]}
+                rows={[...byClientRange.values()]
+                  .sort((a, b) => b.dues - a.dues)
+                  .slice(0, 5)
+                  .map((r) => [r.name, money(r.dues)])}
+                empty="No data"
+                rightAlign={[1]}
+              />
+            </Panel>
+          </MotionFade>
+        </section>
+      </AnimatedDetails>
+
+      {/* ---------- Clients table (lifetime) ---------- */}
+      <Panel
+        title="Clients"
+        right={<ClientsToolbar />}
+        stickyHeader
+        contentClassName="overflow-x-auto"
+        className="w-full"
+      >
+        {bulk ? (
+          <form method="post" action="/api/clients/bulk-delete">
+            <div className="mb-3">
+              <button
+                type="submit"
+                className="rounded-xl bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-[transform,opacity] hover:opacity-90 active:scale-[.98]"
+              >
+                Delete selected
+              </button>
+            </div>
+            <MotionFade y={12}>
+              <ClientsTable
+                rows={rows}
+                selectedCharged={selectedCharged}
+                selectedStatus={selectedStatus}
+                start={start}
+                end={end}
+                from={from}
+                to={to}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                bulk
+              />
+            </MotionFade>
+          </form>
+        ) : (
           <MotionFade y={12}>
             <ClientsTable
               rows={rows}
@@ -452,29 +472,11 @@ return (
               to={to}
               sortKey={sortKey}
               sortDir={sortDir}
-              bulk
+              bulk={false}
             />
           </MotionFade>
-        </form>
-      ) : (
-        <MotionFade y={12}>
-          <ClientsTable
-            rows={rows}
-            selectedCharged={selectedCharged}
-            selectedStatus={selectedStatus}
-            start={start}
-            end={end}
-            from={from}
-            to={to}
-            sortKey={sortKey}
-            sortDir={sortDir}
-            bulk={false}
-          />
-        </MotionFade>
-      )}
-    </Panel>
-  </main>
-);
-
-
+        )}
+      </Panel>
+    </main>
+  );
 }

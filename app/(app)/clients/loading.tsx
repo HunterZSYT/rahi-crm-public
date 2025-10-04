@@ -1,7 +1,7 @@
 // app/(whatever)/loading.tsx
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { m, useReducedMotion } from "framer-motion";
 
 export default function Loading() {
   const reduce = useReducedMotion();
@@ -9,30 +9,37 @@ export default function Loading() {
   return (
     <div
       className="fixed inset-0 z-[60] grid place-items-center overflow-hidden"
+      style={{ contain: "layout paint size style" }}
       aria-busy="true"
       aria-live="polite"
     >
       {/* aurora glass */}
       <div className="pointer-events-none absolute inset-0 -z-10">
-        <motion.div
-          className="absolute -top-40 -left-20 h-[60vh] w-[60vw] rounded-full bg-gradient-to-tr from-fuchsia-400 via-purple-400 to-rose-300 opacity-40 blur-3xl mix-blend-multiply dark:opacity-30"
-          animate={reduce ? {} : { x: [0, 40, -20, 0], y: [0, 20, -10, 0] }}
-          transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
-        />
-        <motion.div
-          className="absolute -bottom-40 -right-24 h-[55vh] w-[55vw] rounded-full bg-gradient-to-br from-sky-300 via-indigo-400 to-pink-300 opacity-40 blur-3xl mix-blend-multiply dark:opacity-30"
-          animate={reduce ? {} : { x: [0, -30, 20, 0], y: [0, -20, 10, 0] }}
-          transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
-        />
+        {!reduce && (
+          <>
+            <m.div
+              className="absolute -top-40 -left-20 h-[60vh] w-[60vw] rounded-full bg-gradient-to-tr from-fuchsia-400 via-purple-400 to-rose-300 opacity-40 blur-3xl mix-blend-multiply dark:opacity-30 transform-gpu"
+              style={{ willChange: "transform" }}
+              animate={{ x: [0, 40, -20, 0], y: [0, 20, -10, 0] }}
+              transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <m.div
+              className="absolute -bottom-40 -right-24 h-[55vh] w-[55vw] rounded-full bg-gradient-to-br from-sky-300 via-indigo-400 to-pink-300 opacity-40 blur-3xl mix-blend-multiply dark:opacity-30 transform-gpu"
+              style={{ willChange: "transform" }}
+              animate={{ x: [0, -30, 20, 0], y: [0, -20, 10, 0] }}
+              transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+            />
+          </>
+        )}
         <div className="absolute inset-0 bg-white/70 backdrop-blur-sm dark:bg-neutral-950/60" />
       </div>
 
       {/* trio loader */}
       <div className="flex flex-col items-center gap-6">
         <div className="flex items-center gap-6">
-          <ShapeLoader variant="circle" reduce={reduce} />
-          <ShapeLoader variant="triangle" reduce={reduce} />
-          <ShapeLoader variant="square" reduce={reduce} />
+          <ShapeLoader variant="circle" reduce={!!reduce} />
+          <ShapeLoader variant="triangle" reduce={!!reduce} />
+          <ShapeLoader variant="square" reduce={!!reduce} />
         </div>
 
         {/* label with animated dots */}
@@ -40,27 +47,27 @@ export default function Loading() {
           Loading
           {!reduce && (
             <span className="inline-flex w-8 overflow-hidden align-bottom">
-              <motion.span
+              <m.span
                 className="w-2"
                 animate={{ opacity: [0, 1, 0] }}
                 transition={{ duration: 1, repeat: Infinity, times: [0, 0.5, 1], delay: 0 }}
               >
                 .
-              </motion.span>
-              <motion.span
+              </m.span>
+              <m.span
                 className="w-2"
                 animate={{ opacity: [0, 1, 0] }}
                 transition={{ duration: 1, repeat: Infinity, times: [0, 0.5, 1], delay: 0.2 }}
               >
                 .
-              </motion.span>
-              <motion.span
+              </m.span>
+              <m.span
                 className="w-2"
                 animate={{ opacity: [0, 1, 0] }}
                 transition={{ duration: 1, repeat: Infinity, times: [0, 0.5, 1], delay: 0.4 }}
               >
                 .
-              </motion.span>
+              </m.span>
             </span>
           )}
         </div>
@@ -76,7 +83,7 @@ function ShapeLoader({
   reduce,
 }: {
   variant: "circle" | "triangle" | "square";
-  reduce: boolean | null;
+  reduce: boolean;
 }) {
   const duration = 3;
 
@@ -93,9 +100,9 @@ function ShapeLoader({
   return (
     <div className="relative h-12 w-12">
       {/* moving dot */}
-      <motion.div
-        className="absolute left-1/2 top-1/2 h-[6px] w-[6px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-neutral-900 dark:bg-white"
-        style={{ transformOrigin: "center" }}
+      <m.div
+        className="absolute left-1/2 top-1/2 h-[6px] w-[6px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-neutral-900 dark:bg-white transform-gpu"
+        style={{ transformOrigin: "center", willChange: "transform" }}
         animate={
           reduce
             ? {}
@@ -111,20 +118,15 @@ function ShapeLoader({
             : undefined
         }
       >
-        {/* for triangle/square we animate the dot with x/y keyframes */}
+        {/* for triangle/square animate the dot with x/y keyframes */}
         {variant !== "circle" && !reduce && (
-          <motion.span
-            className="absolute block h-[6px] w-[6px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-neutral-900 dark:bg-white"
+          <m.span
+            className="absolute block h-[6px] w-[6px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-neutral-900 dark:bg-white transform-gpu"
+            style={{ willChange: "transform" }}
             animate={
               variant === "triangle"
-                ? {
-                    x: [0, 10, -10, 0],
-                    y: [0, -18, -18, 0],
-                  }
-                : {
-                    x: [0, 18, 0, -18, 0],
-                    y: [0, -18, -36, -18, 0],
-                  }
+                ? { x: [0, 10, -10, 0], y: [0, -18, -18, 0] }
+                : { x: [0, 18, 0, -18, 0], y: [0, -18, -36, -18, 0] }
             }
             transition={{
               duration,
@@ -134,12 +136,12 @@ function ShapeLoader({
             }}
           />
         )}
-      </motion.div>
+      </m.div>
 
       {/* shape path */}
       <svg viewBox={variant === "triangle" ? "0 0 86 80" : "0 0 80 80"} className="h-full w-full">
         {variant === "circle" && (
-          <motion.circle
+          <m.circle
             {...commonStroke}
             cx="40"
             cy="40"
@@ -148,16 +150,12 @@ function ShapeLoader({
             strokeDasharray={`${(200 / 4) * 3} ${200 / 4} ${(200 / 4) * 3} ${200 / 4}`}
             initial={{ strokeDashoffset: 75 }}
             animate={reduce ? {} : { strokeDashoffset: [75, 125, 175, 225, 275] }}
-            transition={{
-              duration,
-              repeat: Infinity,
-              ease: [0.785, 0.135, 0.15, 0.86],
-            }}
+            transition={{ duration, repeat: Infinity, ease: [0.785, 0.135, 0.15, 0.86] }}
           />
         )}
 
         {variant === "square" && (
-          <motion.rect
+          <m.rect
             {...commonStroke}
             x="8"
             y="8"
@@ -165,25 +163,17 @@ function ShapeLoader({
             height="64"
             strokeDasharray={`${(256 / 4) * 3} ${256 / 4} ${(256 / 4) * 3} ${256 / 4}`}
             animate={reduce ? {} : { strokeDashoffset: [0, 64, 128, 192, 256] }}
-            transition={{
-              duration,
-              repeat: Infinity,
-              ease: [0.785, 0.135, 0.15, 0.86],
-            }}
+            transition={{ duration, repeat: Infinity, ease: [0.785, 0.135, 0.15, 0.86] }}
           />
         )}
 
         {variant === "triangle" && (
-          <motion.polygon
+          <m.polygon
             {...commonStroke}
             points="43 8 79 72 7 72"
             strokeDasharray={`145 ${221 - 145} 145 ${221 - 145}`}
             animate={reduce ? {} : { strokeDashoffset: [0, 74, 147, 221] }}
-            transition={{
-              duration,
-              repeat: Infinity,
-              ease: [0.785, 0.135, 0.15, 0.86],
-            }}
+            transition={{ duration, repeat: Infinity, ease: [0.785, 0.135, 0.15, 0.86] }}
           />
         )}
       </svg>

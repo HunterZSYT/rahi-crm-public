@@ -133,6 +133,50 @@ const minSecLabel = (seconds: number) => {
   return `${mm}m ${ss}s`;
 };
 
+/* ---------- layout helpers (fix overlapping by measuring text) ---------- */
+const LH = (fontSize: number, factor = 1.2) => fontSize * factor;
+
+/** Draw a label + multi-line text block and return bottom Y */
+function drawTextBlock(
+  doc: jsPDF,
+  opts: {
+    label: string;
+    text: string;
+    x: number;
+    y: number;
+    maxWidth: number;
+    labelSize?: number;
+    textSize?: number;
+    gap?: number; // gap between label and text
+  }
+) {
+  const { label, text, x, y, maxWidth, labelSize = 11, textSize = 10, gap = 14 } = opts;
+
+  // label
+  doc.setFont("HindSiliguri", "bold").setFontSize(labelSize);
+  doc.text(label, x, y);
+
+  // split into lines & draw
+  doc.setFont("HindSiliguri", "normal").setFontSize(textSize);
+  const lines = doc.splitTextToSize(text || "—", maxWidth);
+  const firstLineY = y + gap;
+  doc.text(lines, x, firstLineY, { lineHeightFactor: 1.2 });
+
+  const height = lines.length * LH(textSize);
+  const bottom = firstLineY + height - LH(textSize) + 2; // +2 to balance baseline
+  return bottom;
+}
+
+/** ensure remaining space or add page and reset to top */
+function ensureSpace(doc: jsPDF, needed: number, yCurrent: number, top: number, bottom: number) {
+  const maxY = doc.internal.pageSize.getHeight() - bottom;
+  if (yCurrent + needed > maxY) {
+    doc.addPage();
+    return top;
+  }
+  return yCurrent;
+}
+
 /* ------------------------------ Component --------------------------- */
 export default function InvoiceDialog() {
   const [open, setOpen] = React.useState(false);
@@ -262,20 +306,12 @@ export default function InvoiceDialog() {
       const marginBottom = 36;
       const sectionGap = 12;
 
-      // Reserve a right sidebar for the summary
-      const sidebarW = 200; // slimmer so left gets more space
+      // right sidebar for summary
+      const sidebarW = 210;
       const gutter = 12;
       const leftMargin = marginX;
       const contentRightMargin = marginX + sidebarW + gutter;
       const leftTableWidth = pageW - leftMargin - contentRightMargin;
-
-      const ensureSpace = (needed: number, yCurrent: number) => {
-        if (yCurrent + needed > pageH - marginBottom) {
-          doc.addPage();
-          return marginTop;
-        }
-        return yCurrent;
-      };
 
       let y = marginTop;
 
@@ -291,30 +327,34 @@ export default function InvoiceDialog() {
       doc.setFontSize(11);
       doc.text(`# ${number}`, pageW - marginX, y + 42, { align: "right" });
 
-      // meta box
+      // meta box on the right (date / delivery)
       const metaY = y + 50;
+      const metaH = 60;
       const metaW = 210;
       doc.setDrawColor(210);
-      doc.roundedRect(pageW - marginX - metaW, metaY, metaW, 60, 8, 8);
+      doc.roundedRect(pageW - marginX - metaW, metaY, metaW, metaH, 8, 8);
       doc.setFont("HindSiliguri", "normal").setFontSize(10);
       doc.text("Date:", pageW - marginX - metaW + 12, metaY + 20);
       doc.text(fmtDateLong(invoiceDate), pageW - marginX - 12, metaY + 20, { align: "right" });
       doc.text("Delivery Date:", pageW - marginX - metaW + 12, metaY + 40);
       doc.text(fmtDateLong(invoiceDate), pageW - marginX - 12, metaY + 40, { align: "right" });
 
-      // From
-      const fromY = metaY - 8;
-      doc.setFont("HindSiliguri", "bold").setFontSize(11);
-      doc.text("From:", marginX, fromY);
-      doc.setFont("HindSiliguri", "normal").setFontSize(10);
-      doc.text(from, marginX, fromY + 16, { maxWidth: 260 });
+      // ---------- LEFT: From + Bill To (dynamic heights!) ----------
+      const textMaxW = Math.min(leftTableWidth, 280);
 
-      // Bill To
-      const billToY = metaY + 78;
+      // From
+      const fromLabelY = metaY - 8; // visually aligns with right meta
+      const fromBottom = drawTextBlock(doc, {
+        label: "From:",
+        text: from,
+        x: marginX,
+        y: fromLabelY,
+        maxWidth: textMaxW,
+      });
+
+      // Bill To (start a little after From)
+      const billStartY = fromBottom + 14;
       const cl = clients.find((c) => c.id === clientId)!;
-      doc.setFont("HindSiliguri", "bold").setFontSize(11);
-      doc.text("Bill To:", marginX, billToY);
-      doc.setFont("HindSiliguri", "normal").setFontSize(10);
       const billToLines = [
         cl.name,
         cl.designation ? cl.designation : null,
@@ -324,21 +364,31 @@ export default function InvoiceDialog() {
       ]
         .filter(Boolean)
         .join("\n");
-      doc.text(billToLines, marginX, billToY + 16, { maxWidth: 260, lineHeightFactor: 1.2 });
+      const billBottom = drawTextBlock(doc, {
+        label: "Bill To:",
+        text: billToLines,
+        x: marginX,
+        y: billStartY,
+        maxWidth: textMaxW,
+      });
 
-      // Balance Due chip
-      doc.roundedRect(pageW - marginX - metaW, billToY - 8, metaW, 34, 8, 8);
+      // Balance Due chip (align under meta or beside Bill To, whichever is lower)
+      const balanceY = Math.max(metaY + metaH + 10, billStartY - 8);
+      const balanceH = 34;
+      doc.roundedRect(pageW - marginX - metaW, balanceY, metaW, balanceH, 8, 8);
       doc.setFont("HindSiliguri", "bold").setFontSize(10);
-      doc.text("Balance Due:", pageW - marginX - metaW + 12, billToY + 14);
+      doc.text("Balance Due:", pageW - marginX - metaW + 12, balanceY + 22);
       doc.setFont("HindSiliguri", "normal");
-      doc.text(BDT(totalDue), pageW - marginX - 12, billToY + 14, { align: "right" });
+      doc.text(BDT(totalDue), pageW - marginX - 12, balanceY + 22, { align: "right" });
 
-      // starting Y for columns
-      y = billToY + 52;
-      let yLeft = y;
-      let yRight = y;
+      // starting Y for columns: below *everything* drawn so far
+      const topOfColumns = Math.max(billBottom, balanceY + balanceH, metaY + metaH) + sectionGap;
 
-      // ---------- One shared table theme for EVERYTHING ----------
+      // column cursors
+      let yLeft = topOfColumns;
+      let yRight = topOfColumns;
+
+      // ---------- Shared table theme ----------
       const brandFoot = [16, 153, 127] as [number, number, number]; // teal-ish
       const tableTheme = {
         styles: {
@@ -373,7 +423,7 @@ export default function InvoiceDialog() {
 
       if (projectRows.length) {
         doc.setFont("HindSiliguri", "bold").setFontSize(11);
-        yLeft = ensureSpace(18, yLeft);
+        yLeft = ensureSpace(doc, 18, yLeft, marginTop, marginBottom);
         doc.text("Project Based", leftMargin, yLeft);
 
         const body: RowInput[] = projectRows.map((w) => [
@@ -402,6 +452,12 @@ export default function InvoiceDialog() {
             2: { cellWidth: pRateW, halign: "right" },
             3: { cellWidth: pAmtW, halign: "right" },
           },
+          willDrawCell: (data) => {
+            // automatic page-break protection for the table block
+            if (data.row.index === 0 && data.row.section === "body") {
+              yLeft = ensureSpace(doc, 80, yLeft, marginTop, marginBottom);
+            }
+          },
         });
         // @ts-ignore
         yLeft = doc.lastAutoTable.finalY + sectionGap;
@@ -423,7 +479,7 @@ export default function InvoiceDialog() {
         for (const [rate, list] of groups) {
           // group title
           doc.setFont("HindSiliguri", "bold").setFontSize(11);
-          yLeft = ensureSpace(16, yLeft);
+          yLeft = ensureSpace(doc, 16, yLeft, marginTop, marginBottom);
           doc.text(`Per Min Rate ${rate}`, leftMargin, yLeft);
 
           const totalSeconds = list.reduce((s, w) => s + clamp(w.duration_seconds || 0), 0);
@@ -465,16 +521,14 @@ export default function InvoiceDialog() {
         }
       }
 
-      /* ----------------- Sidebar summary tables (RIGHT) -----------------
-         Same theme & look as the left tables.
-      ------------------------------------------------------------------- */
+      /* ----------------- Sidebar summary tables (RIGHT) ----------------- */
       const drawRightTable = (
         title: string,
         headCols: number,
         rows: RowInput[],
         colWidths: number[]
       ) => {
-        yRight = ensureSpace(60 + rows.length * 16, yRight);
+        yRight = ensureSpace(doc, 60 + rows.length * 16, yRight, marginTop, marginBottom);
         const head: RowInput[] = [[{ content: title, colSpan: headCols } as any]];
         const colStyles: Record<number, any> = {};
         colWidths.forEach((w, i) => (colStyles[i] = { cellWidth: w }));
@@ -494,7 +548,6 @@ export default function InvoiceDialog() {
       const projectCount = projectRows.length;
       const timeSeconds = timeRows.reduce((s, w) => s + clamp(w.duration_seconds || 0), 0);
 
-      // Summary with Qty + Amount (your request)
       drawRightTable(
         "Total",
         3,
@@ -505,10 +558,8 @@ export default function InvoiceDialog() {
         [96, 52, sidebarW - (96 + 52) - 2]
       );
 
-      // Grand total
       drawRightTable("Total Due", 2, [["Amount", BDT(totalDue)]], [96, sidebarW - 96 - 2]);
 
-      // Payments
       const payRows: RowInput[] =
         payments.length > 0
           ? payments
@@ -518,21 +569,22 @@ export default function InvoiceDialog() {
           : [["—", ""]];
       drawRightTable("Payment History", 2, payRows, [96, sidebarW - 96 - 2]);
 
-      // Advance Y to the deeper of the two columns
+      // Advance below the taller column
       y = Math.max(yLeft, yRight) + sectionGap;
 
-      // Footer: payment instructions
-      y = ensureSpace(70, y);
+      // Footer: payment instructions (auto page-break safe)
+      y = ensureSpace(doc, 70, y, marginTop, marginBottom);
       doc.setFont("HindSiliguri", "bold").setFontSize(10);
       doc.text("Payment Method:", marginX, y);
       doc.setFont("HindSiliguri", "normal").setFontSize(9);
       let yy = y + 14;
       paymentText.split("\n").forEach((ln) => {
+        yy = ensureSpace(doc, 14, yy, marginTop, marginBottom);
         doc.text(ln, marginX, yy);
         yy += 12;
       });
 
-      // filename (reuse earlier 'cl')
+      // filename
       const safeClient = (cl?.name ?? "Client").replace(/[^\w.-]+/g, "_");
       doc.save(`invoice-${safeClient}-${invoiceDate}-#${number}.pdf`);
     } catch (e: any) {
