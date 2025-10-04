@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
+import EditVariantsDialog from "./EditVariantsDialog"; // ← inline editor button
 
 /* --------------------------------- types --------------------------------- */
 type Basis = "second" | "minute" | "hour" | "project";
@@ -143,7 +144,7 @@ export default function AddWork({
   const [variantCount, setVariantCount] = useState<number>(1);
   const [variants, setVariants] = useState<Variant[]>([makeVariant(0, defaultBasis)]);
 
-  // NEW: existing labels for this client
+  // existing labels for this client
   const [existingLabels, setExistingLabels] = useState<string[] | null>(null);
   const [useNewLabel, setUseNewLabel] = useState<boolean>(false);
   const [chosenLabel, setChosenLabel] = useState<string>("");
@@ -151,6 +152,49 @@ export default function AddWork({
   // error/saving
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  /** reusable: fetch label options */
+  const fetchLabelOptions = React.useCallback(
+    async (isInitial = false) => {
+      try {
+        const r = await fetch(`/api/clients/${clientId}/variant-labels`, { cache: "no-store" });
+        const j = await r.json();
+        const labels = (j?.labels ?? [])
+          .map((s: unknown) => (typeof s === "string" ? s.trim() : ""))
+          .filter(Boolean);
+        setExistingLabels(labels);
+
+        if (isInitial) {
+          if (labels.length) {
+            setUseNewLabel(false);
+            setChosenLabel(labels[0]);
+            setVariants([{ ...makeVariant(0, defaultBasis), label: labels[0] }]);
+            setVariantCount(1);
+          } else {
+            setUseNewLabel(true);
+            setChosenLabel("");
+          }
+        } else {
+          if (!useNewLabel && !labels.includes(chosenLabel)) {
+            if (labels.length) {
+              setChosenLabel(labels[0]);
+              setVariants((arr) => [{ ...arr[0], label: labels[0] }]);
+            } else {
+              setUseNewLabel(true);
+              setChosenLabel("");
+            }
+          }
+        }
+      } catch {
+        setExistingLabels([]);
+        if (isInitial) {
+          setUseNewLabel(true);
+          setChosenLabel("");
+        }
+      }
+    },
+    [clientId, defaultBasis, chosenLabel, useNewLabel]
+  );
 
   /* ------------------------------- hydrate UI ------------------------------ */
   useEffect(() => {
@@ -210,34 +254,8 @@ export default function AddWork({
     setVariants([makeVariant(0, defaultBasis)]);
     setErr(null);
 
-    // fetch distinct variant labels for this client (best-effort)
-    (async () => {
-      try {
-        const r = await fetch(`/api/clients/${clientId}/variant-labels`, { cache: "no-store" });
-        const j = await r.json();
-        const labels = (j?.labels ?? [])
-          .map((s: unknown) => (typeof s === "string" ? s.trim() : ""))
-          .filter(Boolean);
-        setExistingLabels(labels);
-
-        if (labels.length) {
-          // default to first label, single-variant UI
-          setUseNewLabel(false);
-          setChosenLabel(labels[0]);
-          setVariants([{ ...makeVariant(0, defaultBasis), label: labels[0] }]);
-          setVariantCount(1);
-        } else {
-          // no existing labels → allow multi-variant creator
-          setUseNewLabel(true);
-          setChosenLabel("");
-        }
-      } catch {
-        // route missing or failed → behave like "no variants"
-        setExistingLabels([]);
-        setUseNewLabel(true);
-        setChosenLabel("");
-      }
-    })();
+    // fetch distinct variant labels for this client
+    fetchLabelOptions(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modalOpen]);
 
@@ -327,8 +345,6 @@ export default function AddWork({
       } else {
         // CREATE
         const base = variantCount === 1 ? [variants[0]] : variants;
-        // If there are existing labels and user didn't choose "new",
-        // enforce the chosen existing label for consistency.
         const normalized = base.map((v) => ({
           ...v,
           label:
@@ -462,12 +478,16 @@ export default function AddWork({
               ensureVariantCount={ensureVariantCount}
               variants={variants}
               setVariants={setVariants}
-              // NEW
+              // labels
               existingLabels={existingLabels ?? []}
               useNewLabel={useNewLabel}
               setUseNewLabel={setUseNewLabel}
               chosenLabel={chosenLabel}
               setChosenLabel={setChosenLabel}
+              // inline editor support
+              clientId={clientId}
+              refreshLabelOptions={() => fetchLabelOptions(false)}
+              // meta
               err={err}
               saving={saving}
               onSubmit={onSubmit}
@@ -581,12 +601,16 @@ function WorkForm(props: {
   variants: Variant[];
   setVariants: React.Dispatch<React.SetStateAction<Variant[]>>;
 
-  // NEW for existing-labels flow
+  // existing-labels flow
   existingLabels: string[];
   useNewLabel: boolean;
   setUseNewLabel: (v: boolean) => void;
   chosenLabel: string;
   setChosenLabel: (s: string) => void;
+
+  // inline “Edit variants”
+  clientId: string;
+  refreshLabelOptions: () => void;
 
   err: string | null;
   saving: boolean;
@@ -618,8 +642,10 @@ function WorkForm(props: {
     singleVariantLabel, setSingleVariantLabel,
     // variants
     variantCount, ensureVariantCount, variants, setVariants,
-    // NEW
+    // labels
     existingLabels, useNewLabel, setUseNewLabel, chosenLabel, setChosenLabel,
+    // inline editor
+    clientId, refreshLabelOptions,
     err, saving, onSubmit, onDelete, onCancel,
   } = props;
 
@@ -651,7 +677,22 @@ function WorkForm(props: {
             <>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">Variant</label>
+                  {/* Variant label + inline editor + refresh list */}
+                  <div className="mb-1 flex items-center justify-between">
+                    <label className="block text-xs text-neutral-600 dark:text-neutral-400">Variant</label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="rounded-xl border border-neutral-300 px-2 py-1 text-xs hover:bg-white/60 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                        onClick={refreshLabelOptions}
+                        title="Refresh list"
+                      >
+                        Refresh list
+                      </button>
+                      <EditVariantsDialog clientId={clientId} />
+                    </div>
+                  </div>
+
                   <select
                     value={useNewLabel ? "__new__" : chosenLabel}
                     onChange={(e) => {

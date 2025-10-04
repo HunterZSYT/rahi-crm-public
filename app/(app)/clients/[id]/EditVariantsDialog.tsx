@@ -1,28 +1,33 @@
+// app/(app)/clients/[id]/EditVariantsDialog.tsx
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";          // ← NEW
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { useRouter } from "next/navigation";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Pencil, Trash2, SlidersHorizontal } from "lucide-react";
 
 type VariantRow = { label: string; count: number };
 
-export default function EditVariantsDialog({ clientId }: { clientId: string }) {
-  const router = useRouter();                        // ← NEW
+export default function EditVariantsDialog({
+  clientId,
+  /** if true (default), router.refresh() when dialog closes */
+  refreshOnClose = true,
+  /** optional callback fired when dialog transitions from open -> closed */
+  onAfterClose,
+}: {
+  clientId: string;
+  refreshOnClose?: boolean;
+  onAfterClose?: () => void;
+}) {
+  const router = useRouter();
+
   const [open, setOpen] = React.useState(false);
   const [rows, setRows] = React.useState<VariantRow[]>([]);
   const [loading, setLoading] = React.useState(false);
-  const [saving, setSaving] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState<string | null>(null); // label being saved
   const [query, setQuery] = React.useState("");
-  const [dirty, setDirty] = React.useState(false);   // ← NEW
 
   const fetchRows = React.useCallback(async () => {
     setLoading(true);
@@ -39,6 +44,16 @@ export default function EditVariantsDialog({ clientId }: { clientId: string }) {
     if (open) fetchRows();
   }, [open, fetchRows]);
 
+  // Fire callbacks when the dialog actually closes
+  const prevOpen = React.useRef(open);
+  React.useEffect(() => {
+    if (prevOpen.current && !open) {
+      if (refreshOnClose) router.refresh();
+      onAfterClose?.();
+    }
+    prevOpen.current = open;
+  }, [open, refreshOnClose, onAfterClose, router]);
+
   async function rename(oldLabel: string, newLabelRaw: string) {
     const newLabel = newLabelRaw.trim();
     if (!newLabel || newLabel === oldLabel) return;
@@ -51,9 +66,7 @@ export default function EditVariantsDialog({ clientId }: { clientId: string }) {
       });
       if (!r.ok) throw new Error("Rename failed");
       await fetchRows();
-      setDirty(true);                                // ← mark page state dirty
-    } catch (e) {
-      console.error(e);
+    } catch {
       alert("Could not rename. Please try again.");
     } finally {
       setSaving(null);
@@ -73,9 +86,7 @@ export default function EditVariantsDialog({ clientId }: { clientId: string }) {
       });
       if (!r.ok) throw new Error("Delete failed");
       await fetchRows();
-      setDirty(true);                                // ← mark page state dirty
-    } catch (e) {
-      console.error(e);
+    } catch {
       alert("Could not delete. Please try again.");
     } finally {
       setSaving(null);
@@ -85,18 +96,7 @@ export default function EditVariantsDialog({ clientId }: { clientId: string }) {
   const filtered = rows.filter(r => r.label.toLowerCase().includes(query.toLowerCase()));
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        // if closing and we changed something, refresh the page data
-        if (open && !next && dirty) {
-          setDirty(false);
-          router.refresh();                          // ← triggers server components to re-fetch
-          // If you want a hard reload instead, use: window.location.reload();
-        }
-        setOpen(next);
-      }}
-    >
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" className="gap-2">
           <SlidersHorizontal className="h-4 w-4" />
@@ -163,7 +163,6 @@ function Row({
 }) {
   const [editing, setEditing] = React.useState(false);
   const [val, setVal] = React.useState(v.label);
-
   React.useEffect(() => setVal(v.label), [v.label]);
 
   return (
