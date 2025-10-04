@@ -4,36 +4,30 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-// header helpers (adjust paths if yours differ)
 import SortableHeader from "./SortableHeader";
 import HeaderMultiSelect from "./HeaderMultiSelect";
 import DateHeaderRange from "./DateHeaderRange";
 
-/** ---------------- Types the page already expects ---------------- */
+/** ---------------- Types (earnings removed) ---------------- */
 export type Row = {
   client: {
     id: string;
     name: string;
     charged_by: "second" | "minute" | "hour" | "project";
     status: "active" | "closed" | "payment_expired";
-    /** used as date fallback when a client has no delivered work yet */
     created_at?: string | null;
   };
   projects: number;
-  payments: number;
+  payments: number; // <- we will DISPLAY this as “Earnings”
   dues: number;
-  earnings: number;
   activeDays: number;
-  /** last delivered date (ISO) or null */
   lastDate: string | null;
 };
 
 type Props = {
   rows: Row[];
-  /** current URL state pushed down from the page */
   selectedCharged: Array<Row["client"]["charged_by"]>;
   selectedStatus: Array<Row["client"]["status"]>;
-  /** current date filter (from/to) coming from the URL */
   from: string | null;
   to: string | null;
   sortKey: string;
@@ -41,7 +35,7 @@ type Props = {
   bulk: boolean;
 };
 
-/** ---------------- Small helpers (local) ---------------- */
+/** ---------------- Helpers ---------------- */
 function money(n: number) {
   return `৳${Number(n || 0).toLocaleString("en-BD", {
     maximumFractionDigits: 2,
@@ -80,7 +74,6 @@ export default function ClientsTable({
   const pathname = usePathname();
   const search = useSearchParams();
 
-  // local sort state (initialize from props; changes do not update URL)
   const [sort, setSort] = React.useState<{ key: string; dir: "asc" | "desc" }>(
     { key: sortKey || "", dir: sortDir || "desc" }
   );
@@ -91,9 +84,8 @@ export default function ClientsTable({
   const allSelected = allIds.length > 0 && allIds.every((id) => checked[id]);
 
   function toggleAll() {
-    if (allSelected) {
-      setChecked({});
-    } else {
+    if (allSelected) setChecked({});
+    else {
       const next: Record<string, boolean> = {};
       for (const id of allIds) next[id] = true;
       setChecked(next);
@@ -109,10 +101,7 @@ export default function ClientsTable({
     ) {
       return false;
     }
-    if (
-      selectedStatus.length > 0 &&
-      !selectedStatus.includes(r.client.status)
-    ) {
+    if (selectedStatus.length > 0 && !selectedStatus.includes(r.client.status)) {
       return false;
     }
     if (from && effectiveDate && effectiveDate < from) return false;
@@ -145,11 +134,7 @@ export default function ClientsTable({
           av = a.projects;
           bv = b.projects;
           break;
-        case "earnings":
-          av = a.earnings;
-          bv = b.earnings;
-          break;
-        case "payments":
+        case "payments": // shown as “Earnings”
           av = a.payments;
           bv = b.payments;
           break;
@@ -204,7 +189,9 @@ export default function ClientsTable({
   if (selectedCharged.length) {
     filterChips.push({
       label: "Charged",
-      value: selectedCharged.map((s) => s[0].toUpperCase() + s.slice(1)).join(", "),
+      value: selectedCharged
+        .map((s) => s[0].toUpperCase() + s.slice(1))
+        .join(", "),
     });
   }
   if (selectedStatus.length) {
@@ -272,7 +259,7 @@ export default function ClientsTable({
               </th>
             )}
 
-            {/* Date (sortable + range filter) */}
+            {/* Date */}
             <th className="px-3 py-2 text-left">
               <div className="flex items-center gap-2">
                 <SortableHeader
@@ -285,7 +272,7 @@ export default function ClientsTable({
               </div>
             </th>
 
-            {/* Client (sortable) */}
+            {/* Client */}
             <th className="px-3 py-2 text-left">
               <SortableHeader
                 label="Client"
@@ -295,7 +282,7 @@ export default function ClientsTable({
               />
             </th>
 
-            {/* Charged By (sortable + multi-select filter) */}
+            {/* Charged By */}
             <th className="px-3 py-2 text-left">
               <div className="flex items-center gap-2">
                 <SortableHeader
@@ -313,7 +300,7 @@ export default function ClientsTable({
               </div>
             </th>
 
-            {/* numeric columns (sortable) */}
+            {/* Totals */}
             <th className="px-3 py-2 text-right">
               <SortableHeader
                 label="Total Projects"
@@ -322,22 +309,17 @@ export default function ClientsTable({
                 onToggle={() => setSortKey("projects")}
               />
             </th>
+
+            {/* Earnings (uses payments) */}
             <th className="px-3 py-2 text-right">
               <SortableHeader
                 label="Earnings"
-                active={sort.key === "earnings"}
-                dir={sort.dir}
-                onToggle={() => setSortKey("earnings")}
-              />
-            </th>
-            <th className="px-3 py-2 text-right">
-              <SortableHeader
-                label="Payments"
-                active={sort.key === "payments"}
+                active={sort.key === "payments"} // we sort by payments value
                 dir={sort.dir}
                 onToggle={() => setSortKey("payments")}
               />
             </th>
+
             <th className="px-3 py-2 text-right">
               <SortableHeader
                 label="Dues"
@@ -347,7 +329,7 @@ export default function ClientsTable({
               />
             </th>
 
-            {/* Status (sortable + multi-select filter) */}
+            {/* Status */}
             <th className="px-3 py-2 text-left">
               <div className="flex items-center gap-2">
                 <SortableHeader
@@ -365,7 +347,7 @@ export default function ClientsTable({
               </div>
             </th>
 
-            {/* Active Days (sortable) */}
+            {/* Active Days */}
             <th className="px-3 py-2 text-right">
               <SortableHeader
                 label="Active Days"
@@ -384,7 +366,7 @@ export default function ClientsTable({
             <tr>
               <td
                 className="px-3 py-6 text-center text-neutral-500"
-                colSpan={bulk ? 11 : 10}
+                colSpan={bulk ? 10 : 9}
               >
                 No clients match the current filters.
               </td>
@@ -409,7 +391,7 @@ export default function ClientsTable({
                   </td>
                 )}
 
-                {/* Date cell uses delivered date, falling back to client's created_at */}
+                {/* Date */}
                 <td className="px-3 py-2">
                   {shortDate(r.lastDate ?? r.client.created_at)}
                 </td>
@@ -417,8 +399,10 @@ export default function ClientsTable({
                 <td className="px-3 py-2">{r.client.name}</td>
                 <td className="px-3 py-2 capitalize">{r.client.charged_by}</td>
                 <td className="px-3 py-2 text-right">{r.projects}</td>
-                <td className="px-3 py-2 text-right">{money(r.earnings)}</td>
+
+                {/* Earnings (payments) */}
                 <td className="px-3 py-2 text-right">{money(r.payments)}</td>
+
                 <td className="px-3 py-2 text-right">
                   {r.dues > 0 ? money(r.dues) : "—"}
                 </td>
