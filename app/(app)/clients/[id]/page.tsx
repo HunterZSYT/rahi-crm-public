@@ -8,7 +8,7 @@ import PaymentsTable from "./payments-table";
 import AddPayment from "./add-payment";
 import AddWork from "./add-work";
 import WorkFilters, { WorkFiltersState } from "./work-filters";
-import EditClientDialog from "./EditClientDialog"; // ⬅️ NEW
+import EditClientDialog from "./EditClientDialog";
 
 /* ---------- types ---------- */
 type Client = {
@@ -24,7 +24,7 @@ type Client = {
   note: string | null;
 };
 
-type WorkStatRow = {
+type WorkRow = {
   amount_due: number | null;
   status: "processing" | "delivered";
   delivered_at: string | null;
@@ -32,17 +32,12 @@ type WorkStatRow = {
 
 type PaymentRow = { amount: number | string };
 
+type ActiveDaysRow = { active_days: number };
+
 /* ---------- helpers ---------- */
 function money(n: string | number | null | undefined) {
   const num = Number(n || 0);
   return `৳${num.toLocaleString("en-BD", { maximumFractionDigits: 2 })}`;
-}
-
-function daysBetween(minISO?: string | null, maxISO?: string | null) {
-  if (!minISO || !maxISO) return 0;
-  const a = new Date(minISO);
-  const b = new Date(maxISO);
-  return Math.max(0, Math.round((+b - +a) / 86400000) + 1);
 }
 
 /* ---------- page ---------- */
@@ -64,7 +59,7 @@ export default async function ClientDetailPage({
 
   const supabase = await createClient();
 
-  // --- fetch client with extra fields
+  // --- fetch client
   const { data: client, error: clientErr } = await supabase
     .from("clients")
     .select(
@@ -86,45 +81,43 @@ export default async function ClientDetailPage({
     );
   }
 
-  // --- fetch stats for KPIs (no RPC; compute here)
-  const [{ data: works }, { data: pays }] = await Promise.all([
+  // --- fetch stats (compute in app where needed)
+  const [{ data: works }, { data: pays }, { data: adRow }] = await Promise.all([
     supabase
       .from("work_entries")
       .select("amount_due,status,delivered_at")
       .eq("client_id", id),
     supabase.from("payment_entries").select("amount").eq("client_id", id),
+    // Active days from the VIEW you created:
+    supabase
+      .from("v_client_active_days")
+      .select("active_days")
+      .eq("client_id", id)
+      .maybeSingle<ActiveDaysRow>(),
   ]);
 
-  const delivered = (works ?? []).filter(
-    (w) => w.status === "delivered"
-  ) as WorkStatRow[];
+  const workList = (works ?? []) as WorkRow[];
 
+  // delivered-only totals for “projects” & dues math
+  const delivered = workList.filter((w) => w.status === "delivered");
   const deliveredSum = delivered.reduce(
     (s, r) => s + Number(r.amount_due || 0),
     0
   );
   const totalProjects = delivered.length;
 
+  // payments = earnings
   const totalPayments = (pays ?? []).reduce(
     (s, r) => s + Number((r as PaymentRow).amount || 0),
     0
   );
+  const recognizedEarnings = totalPayments;
 
+  // dues
   const totalDues = Math.max(0, deliveredSum - totalPayments);
 
-  // ✅ Recognize earnings only when all dues are cleared
-  const recognizedEarnings = totalDues === 0 ? deliveredSum : 0;
-
-  let minDelivered: string | null = null;
-  let maxDelivered: string | null = null;
-  for (const r of delivered) {
-    if (!r.delivered_at) continue;
-    if (!minDelivered || r.delivered_at < minDelivered)
-      minDelivered = r.delivered_at;
-    if (!maxDelivered || r.delivered_at > maxDelivered)
-      maxDelivered = r.delivered_at;
-  }
-  const activeDays = daysBetween(minDelivered, maxDelivered);
+  // Active Days from the view (fallback to 0 if no row yet)
+  const activeDays = Number(adRow?.active_days ?? 0);
 
   return (
     <main className="w-full px-6 xl:px-10 py-10 space-y-10">
@@ -152,7 +145,7 @@ export default async function ClientDetailPage({
         </div>
       </div>
 
-      {/* KPI cards */}
+      {/* KPI cards (4 cards: Projects, Earnings (payments), Dues, Active Days) */}
       <section className="grid grid-cols-12 gap-6">
         <Card
           className="col-span-12 sm:col-span-6 lg:col-span-3 xl:col-span-2"
@@ -162,12 +155,7 @@ export default async function ClientDetailPage({
         <Card
           className="col-span-12 sm:col-span-6 lg:col-span-3 xl:col-span-2"
           label="Total Earnings"
-          value={money(recognizedEarnings)}
-        />
-        <Card
-          className="col-span-12 sm:col-span-6 lg:col-span-3 xl:col-span-2"
-          label="Total Payments"
-          value={money(totalPayments)}
+          value={money(recognizedEarnings)} // payments == earnings
         />
         <Card
           className="col-span-12 sm:col-span-6 lg:col-span-3 xl:col-span-2"
@@ -182,10 +170,7 @@ export default async function ClientDetailPage({
       </section>
 
       {/* Client info panel + inline edit button */}
-      <Panel
-        title="Client info"
-        right={<EditClientDialog client={client} />} // ⬅️ NEW
-      >
+      <Panel title="Client info" right={<EditClientDialog client={client} />}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <InfoRow label="Contact name" value={client.contact_name || "—"} />
           <InfoRow label="Designation" value={client.designation || "—"} />
@@ -284,7 +269,7 @@ function Panel({
   title: string;
   children: React.ReactNode;
   className?: string;
-  right?: React.ReactNode; // ⬅️ NEW
+  right?: React.ReactNode;
 }) {
   return (
     <div className={`w-full rounded-2xl border bg-white/95 shadow-sm ${className}`}>

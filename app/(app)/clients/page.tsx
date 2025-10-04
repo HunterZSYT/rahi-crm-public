@@ -8,7 +8,7 @@ import MiniTable from "./_components/MiniTable";
 import ClientsTable, { type Row } from "./_components/ClientsTable";
 import ClientsToolbar from "./_components/ClientsToolbar";
 
-import { arrParam, keepParams, money, daysBetween } from "./_lib/table";
+import { arrParam, keepParams, money } from "./_lib/table";
 import { getGlobalTotals } from "@/app/(app)/_lib/stats";
 
 /* ---- types ---- */
@@ -33,6 +33,7 @@ type Work = {
   date: string;
 };
 type Payment = { client_id: string; amount: number | string; date?: string };
+type ActiveDaysRow = { client_id: string; active_days: number };
 
 export default async function DashboardPage({
   searchParams,
@@ -79,12 +80,21 @@ export default async function DashboardPage({
   const clientList = (clients ?? []) as Client[];
 
   /* ---------- Lifetime aggregates for the table ---------- */
-  const [{ data: worksAll }, { data: paysAll }] = await Promise.all([
-    supabase
-      .from("work_entries")
-      .select("client_id,status,amount_due,delivered_at,date") as any,
-    supabase.from("payment_entries").select("client_id,amount") as any,
-  ]);
+  const [{ data: worksAll }, { data: paysAll }, { data: actRows }] =
+    await Promise.all([
+      supabase
+        .from("work_entries")
+        .select("client_id,status,amount_due,delivered_at,date") as any,
+      supabase.from("payment_entries").select("client_id,amount") as any,
+      supabase
+        .from("v_client_active_days")
+        .select("client_id,active_days") as any,
+    ]);
+
+  const activeDaysMap = new Map<string, number>();
+  for (const r of (actRows ?? []) as ActiveDaysRow[]) {
+    activeDaysMap.set(r.client_id, Number(r.active_days) || 0);
+  }
 
   const workListAll = (worksAll ?? []) as Work[];
   const payListAll = (paysAll ?? []) as Payment[];
@@ -162,11 +172,10 @@ export default async function DashboardPage({
   );
   const globalProjects = deliveredRange.length;
 
-  // ✅ Use per-client dues/earnings computation for the KPI cards
+  // Payments are treated as earnings; dues computed separately
   const {
-    totalPayments: globalPayments,
+    totalPayments: globalPayments, // = earnings
     totalDues: globalDues,
-    totalEarnings: globalEarnings,
   } = await getGlobalTotals({ start, end });
 
   const statuses = {
@@ -208,9 +217,11 @@ export default async function DashboardPage({
     const deliveredSum = agg?.deliveredSum ?? 0;
     const payments = agg?.payments ?? 0;
     const dues = Math.max(0, deliveredSum - payments);
-    const earnings = Math.max(0, payments - dues);
-    const activeDays = daysBetween(agg?.minDelivered, agg?.maxDelivered);
+    const earnings = Math.max(0, payments - dues); // keep existing table logic
     const lastDate = agg?.maxDelivered ?? null;
+
+    // Active days from view (unique work dates)
+    const activeDays = activeDaysMap.get(c.id) ?? 0;
 
     return {
       client: {
@@ -321,9 +332,10 @@ export default async function DashboardPage({
                 { label: "Processing", value: String(processingRange.length) },
               ]}
             />
+            {/* Payments are treated as earnings */}
             <StatCard
               className="col-span-12 md:col-span-3"
-              label="Global Payments"
+              label="Global Total Earnings"
               value={money(globalPayments)}
             />
             <StatCard
@@ -331,12 +343,8 @@ export default async function DashboardPage({
               label="Global Total Dues"
               value={globalDues > 0 ? money(globalDues) : "—"}
             />
-            <StatCard
-              className="col-span-12 md:col-span-3"
-              label="Global Total Earnings"
-              value={money(globalEarnings)}
-            />
 
+            {/* Status panel sits as the 4th block */}
             <div className="col-span-12 md:col-span-3 rounded-2xl border bg-white p-4 shadow-sm">
               <div className="text-xs text-neutral-500">Global Client Status</div>
               <ul className="mt-2 space-y-1 text-sm">
