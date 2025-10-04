@@ -1,20 +1,32 @@
+// app/(app)/layout.tsx
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import AppShell from "./_components/AppShell";
 
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   if (!user) redirect("/login");
 
   return (
     <div className="mx-auto w-full max-w-none px-4 sm:px-6 lg:px-10 py-10">
+      {/* Header stays outside page transitions so it doesn't animate on every route */}
       <header className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Dashboard</h1>
         <form action="/auth/logout" method="post">
           <button className="rounded-xl border px-3 py-1.5">Sign out</button>
         </form>
       </header>
-      {children}
+
+      {/* Client shell: progress bar, page transitions, parallax BG, motion config */}
+      <AppShell>{children}</AppShell>
     </div>
   );
 }
